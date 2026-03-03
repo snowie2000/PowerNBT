@@ -189,7 +189,7 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
         <Tree
           showLine={{ showLeafIcon: false }}
           blockNode
-          treeData={treeData}
+          treeData={treeData as unknown as { key: string }[]}
           selectedKeys={selectedKey ? [selectedKey] : []}
           expandedKeys={expandedKeys}
           onSelect={(keys) => selectNode((keys[0] as string) ?? null)}

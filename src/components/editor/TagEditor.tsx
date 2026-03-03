@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import {
   Typography, Form, Input, InputNumber, Empty, Space, Tag,
 } from 'antd'
@@ -16,6 +16,26 @@ interface TagEditorProps {
 
 export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
   const { updateNodeValue, updateNodeName } = useEditorStore()
+
+  // Local state for numeric / long inputs — prevents per-keystroke store updates
+  // (which clone the whole doc tree and re-render the NbtTree).
+  // We sync from the node when the selected key changes, and commit on blur.
+  const [localInt, setLocalInt] = useState<number | null>(null)
+  const [localFloat, setLocalFloat] = useState<number | string | null>(null)
+  const [localLong, setLocalLong] = useState<string>(() =>
+    node.type === TAG.Long ? String(node.value as bigint) : '0'
+  )
+  const [localString, setLocalString] = useState<string>(() =>
+    node.type === TAG.String ? (node.value as string) ?? '' : ''
+  )
+
+  // Sync local state whenever the user selects a different node
+  useEffect(() => {
+    setLocalInt(null)
+    setLocalFloat(null)
+    setLocalLong(String(node.type === TAG.Long ? (node.value as bigint) : 0n))
+    setLocalString(node.type === TAG.String ? (node.value as string) ?? '' : '')
+  }, [node.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,51 +64,56 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
       case TAG.String:
         return (
           <Input.TextArea
-            value={(node.value as string) ?? ''}
+            value={localString}
             autoSize={{ minRows: 2, maxRows: 10 }}
-            onChange={(e) => handleValueChange(e.target.value)}
+            onChange={(e) => setLocalString(e.target.value)}
+            onBlur={() => handleValueChange(localString)}
           />
         )
 
       case TAG.Byte:
         return (
           <InputNumber
-            value={node.value as number}
+            value={localInt ?? (node.value as number)}
             min={-128}
             max={127}
             style={{ width: '100%' }}
-            onChange={(v) => v != null && handleValueChange(v)}
+            onChange={(v) => setLocalInt(v)}
+            onBlur={() => { if (localInt != null) handleValueChange(localInt) }}
           />
         )
 
       case TAG.Short:
         return (
           <InputNumber
-            value={node.value as number}
+            value={localInt ?? (node.value as number)}
             min={-32768}
             max={32767}
             style={{ width: '100%' }}
-            onChange={(v) => v != null && handleValueChange(v)}
+            onChange={(v) => setLocalInt(v)}
+            onBlur={() => { if (localInt != null) handleValueChange(localInt) }}
           />
         )
 
       case TAG.Int:
         return (
           <InputNumber
-            value={node.value as number}
+            value={localInt ?? (node.value as number)}
             min={-2147483648}
             max={2147483647}
             style={{ width: '100%' }}
-            onChange={(v) => v != null && handleValueChange(v)}
+            onChange={(v) => setLocalInt(v)}
+            onBlur={() => { if (localInt != null) handleValueChange(localInt) }}
           />
         )
 
       case TAG.Long:
         return (
           <Input
-            value={String(node.value as bigint)}
-            onChange={(e) => {
-              try { handleValueChange(BigInt(e.target.value)) } catch { /* invalid */ }
+            value={localLong}
+            onChange={(e) => setLocalLong(e.target.value)}
+            onBlur={() => {
+              try { handleValueChange(BigInt(localLong)) } catch { /* invalid, don't commit */ }
             }}
             addonAfter="L"
           />
@@ -97,22 +122,34 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
       case TAG.Float:
         return (
           <InputNumber
-            value={node.value as number}
+            value={localFloat ?? (node.value as number)}
             step={0.001}
             stringMode
             style={{ width: '100%' }}
-            onChange={(v) => v != null && handleValueChange(typeof v === 'string' ? parseFloat(v) : v)}
+            onChange={(v) => setLocalFloat(v)}
+            onBlur={() => {
+              if (localFloat != null) {
+                const n = typeof localFloat === 'string' ? parseFloat(localFloat) : localFloat
+                if (!isNaN(n)) handleValueChange(n)
+              }
+            }}
           />
         )
 
       case TAG.Double:
         return (
           <InputNumber
-            value={node.value as number}
+            value={localFloat ?? (node.value as number)}
             step={0.0001}
             stringMode
             style={{ width: '100%' }}
-            onChange={(v) => v != null && handleValueChange(typeof v === 'string' ? parseFloat(v) : v)}
+            onChange={(v) => setLocalFloat(v)}
+            onBlur={() => {
+              if (localFloat != null) {
+                const n = typeof localFloat === 'string' ? parseFloat(localFloat) : localFloat
+                if (!isNaN(n)) handleValueChange(n)
+              }
+            }}
           />
         )
 

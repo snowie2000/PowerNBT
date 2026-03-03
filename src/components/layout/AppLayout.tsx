@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useCallback } from 'react'
-import { Layout, Tabs, Button, Typography, Space } from 'antd'
+import { Layout, Tabs, Button, Typography, Space, Spin } from 'antd'
 import { CloseOutlined, FolderOpenOutlined, DatabaseOutlined } from '@ant-design/icons'
 import { Toolbar } from '../toolbar/Toolbar'
 import { NbtTree } from '../tree/NbtTree'
@@ -16,7 +16,7 @@ const MAX_SIDER = 800
 const DEFAULT_SIDER = 360
 
 export const AppLayout: React.FC = () => {
-  const { openFiles, activeFileIndex, selectedKey, closeFile, setActiveFile } = useEditorStore()
+  const { openFiles, activeFileIndex, selectedKey, closeFile, setActiveFile, isLoading } = useEditorStore()
   const { openNbtFiles, openWorldFolder } = useFileSystem()
 
   const [siderWidth, setSiderWidth] = useState(DEFAULT_SIDER)
@@ -87,6 +87,7 @@ export const AppLayout: React.FC = () => {
 
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
+      {isLoading && <Spin spinning fullscreen tip="Opening world…" size="large" />}
       <Toolbar />
 
       {openFiles.length === 0 ? (

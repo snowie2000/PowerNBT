@@ -27,16 +27,15 @@ const TAG_NEW_FILE = 7
  * Parse the MANIFEST file (which uses the same log format as .log files)
  * to determine the active set of SST files for the database.
  */
-export function parseManifest(buf: Uint8Array): { activeFiles: FileMetaData[]; lastLogNumber: number } {
-  // MANIFEST uses same log-record framing but records are VersionEdits, not write batches
-
-  // Re-parse MANIFEST at a lower level: each logical record IS a VersionEdit
+export function parseManifest(buf: Uint8Array): { activeFiles: FileMetaData[]; lastLogNumber: number; lastSequence: bigint } {
   const editsRaw = parseManifestEdits(buf)
   const activeFileMap = new Map<number, FileMetaData>()
   let lastLogNumber = 0
+  let lastSequence = 0n
 
   for (const edit of editsRaw) {
     if (edit.logNumber != null) lastLogNumber = edit.logNumber
+    if (edit.lastSequence != null && edit.lastSequence > lastSequence) lastSequence = edit.lastSequence
     for (const f of edit.newFiles) {
       activeFileMap.set(f.fileNumber, f)
     }
@@ -45,13 +44,13 @@ export function parseManifest(buf: Uint8Array): { activeFiles: FileMetaData[]; l
     }
   }
 
-  console.debug(`[LevelDB] Manifest parsed: ${editsRaw.length} edit(s), ${activeFileMap.size} active SST file(s), lastLogNumber=${lastLogNumber}`)
+  console.debug(`[LevelDB] Manifest parsed: ${editsRaw.length} edit(s), ${activeFileMap.size} active SST file(s), lastLogNumber=${lastLogNumber}, lastSequence=${lastSequence}`)
   if (activeFileMap.size > 0) {
     const fileList = Array.from(activeFileMap.values()).map(f => `${String(f.fileNumber).padStart(6,'0')}.ldb(L${f.level})`).join(', ')
     console.debug(`[LevelDB] Active files: ${fileList}`)
   }
 
-  return { activeFiles: Array.from(activeFileMap.values()), lastLogNumber }
+  return { activeFiles: Array.from(activeFileMap.values()), lastLogNumber, lastSequence }
 }
 
 /** Parse MANIFEST binary, extracting each VersionEdit record */

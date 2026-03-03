@@ -4,119 +4,84 @@ import { BedrockLevelDB } from '../lib/leveldb/db'
 import { useEditorStore } from '../store/useEditorStore'
 import type { NbtDocument } from '../lib/nbt/types'
 
-declare global {
-  interface Window {
-    showOpenFilePicker: (opts?: Record<string, unknown>) => Promise<FileSystemFileHandle[]>
-    showSaveFilePicker: (opts?: Record<string, unknown>) => Promise<FileSystemFileHandle>
-    showDirectoryPicker: (opts?: Record<string, unknown>) => Promise<FileSystemDirectoryHandle>
-  }
-}
-
 export function useFileSystem() {
-  const { openNbtFile, openLevelDB, markClean } = useEditorStore()
+  const { openNbtFile, openLevelDB, markClean, setIsLoading } = useEditorStore()
 
-  /** Open one or more standalone NBT files */
+  // ── Open NBT files ──────────────────────────────────────────────────────
+
   const openNbtFiles = useCallback(async () => {
-    if (!window.showOpenFilePicker) {
-      alert('Your browser does not support the File System Access API. Please use Chrome or Edge.')
-      return
-    }
-    let handles: FileSystemFileHandle[]
-    try {
-      handles = await window.showOpenFilePicker({
-        multiple: true,
-        types: [
-          {
-            description: 'NBT files',
-            accept: {
-              'application/octet-stream': ['.dat', '.nbt', '.mcstructure', '.dat_old'],
-            },
-          },
-        ],
-      })
-    } catch {
-      return // user cancelled
-    }
+    const paths = await window.electronAPI.dialog.openFiles([
+      { name: 'NBT Files', extensions: ['dat', 'nbt', 'mcstructure', 'dat_old'] },
+    ])
+    if (!paths) return
 
-    for (const handle of handles) {
+    for (const filePath of paths) {
       try {
-        const file = await handle.getFile()
-        const buf = await file.arrayBuffer()
-        const doc = await parseNbt(buf, { kind: 'file', handle })
-        openNbtFile(doc, file.name)
+        const bytes = await window.electronAPI.fs.readFile(filePath)
+        if (!bytes) { alert(`Could not read ${filePath}`); continue }
+        const doc = await parseNbt(bytes.buffer as ArrayBuffer, { kind: 'file', path: filePath })
+        const name = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath
+        openNbtFile(doc, name)
       } catch (e) {
-        console.error(`Failed to open ${handle.name}:`, e)
-        alert(`Failed to read ${handle.name}: ${e}`)
+        alert(`Failed to read ${filePath}: ${e}`)
       }
     }
   }, [openNbtFile])
 
-  /** Open a Minecraft Bedrock world folder */
+  // ── Open Bedrock world folder ────────────────────────────────────────────
+
   const openWorldFolder = useCallback(async () => {
-    if (!window.showDirectoryPicker) {
-      alert('Your browser does not support directory picking. Please use Chrome or Edge.')
-      return
-    }
-    let dirHandle: FileSystemDirectoryHandle
-    try {
-      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' })
-    } catch {
-      return // user cancelled
-    }
+    const worldPath = await window.electronAPI.dialog.openDirectory()
+    if (!worldPath) return
 
-    // Verify it looks like a Bedrock world by checking for level.dat and db/
-    let hasLevelDat = false
-    try {
-      await dirHandle.getFileHandle('level.dat')
-      hasLevelDat = true
-    } catch { /* not found */ }
-    try {
-      await dirHandle.getDirectoryHandle('db')
-    } catch { /* not found */ }
+    // Normalise separators
+    const wp = worldPath.replace(/\\/g, '/')
+    const dbPath = wp + '/db'
 
-    // Also allow opening when the db/ directory itself is selected
-    let dbHandle: FileSystemDirectoryHandle
+    // Open the LevelDB
+    setIsLoading(true)
     try {
-      dbHandle = await dirHandle.getDirectoryHandle('db')
-    } catch {
-      // Maybe user selected the db/ directory directly
-      dbHandle = dirHandle
-    }
-
-    try {
-      const db = new BedrockLevelDB(dbHandle)
+      const db = new BedrockLevelDB(dbPath)
       await db.open()
-      openLevelDB(db, dirHandle.name)
+      const worldName = wp.split('/').pop() ?? wp
+      openLevelDB(db, worldName)
 
       // Also open level.dat if present
-      if (hasLevelDat) {
+      const levelDatPath = wp + '/level.dat'
+      const exists = await window.electronAPI.fs.exists(levelDatPath)
+      if (exists) {
         try {
-          const fh = await dirHandle.getFileHandle('level.dat')
-          const file = await fh.getFile()
-          const buf = await file.arrayBuffer()
-          // Bedrock level.dat has a special 8-byte header before the NBT data:
-          // [0-3] version (int32 LE), [4-7] NBT payload size (int32 LE)
-          let nbtPayload: ArrayBuffer
+          const buf = await window.electronAPI.fs.readFile(levelDatPath)
+          if (!buf) throw new Error('level.dat is empty or unreadable')
+          // Bedrock level.dat has an 8-byte header: 4-byte version + 4-byte payload size
           let bedrockHeader: Uint8Array | undefined
+          let nbtData: ArrayBuffer
           if (buf.byteLength > 8) {
-            bedrockHeader = new Uint8Array(buf.slice(0, 8))
-            nbtPayload = buf.slice(8)
+            bedrockHeader = buf.slice(0, 8)
+            nbtData = buf.slice(8).buffer as ArrayBuffer
           } else {
-            nbtPayload = buf
+            nbtData = buf.buffer as ArrayBuffer
           }
-          const doc = await parseNbt(nbtPayload, { kind: 'file', handle: fh, bedrockHeader })
+          const doc = await parseNbt(nbtData, { kind: 'file', path: levelDatPath, bedrockHeader })
           openNbtFile(doc, 'level.dat')
         } catch (e) {
           console.warn('Could not parse level.dat:', e)
         }
       }
     } catch (e) {
-      console.error('Failed to open world:', e)
       alert(`Failed to open world: ${e}`)
+    } finally {
+      setIsLoading(false)
     }
-  }, [openNbtFile, openLevelDB])
+  }, [openNbtFile, openLevelDB, setIsLoading])
 
-  /** Save an NBT document back to its original source (file or LevelDB key) */
+  // ── Save ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Save an NBT document back to its source.
+   * For file sources writes directly to the path.
+   * For leveldb sources calls db.put() + db.flush().
+   */
   const saveNbtFile = useCallback(async (doc: NbtDocument, db?: BedrockLevelDB) => {
     const bytes = serializeNbt(doc)
 
@@ -128,54 +93,39 @@ export function useFileSystem() {
     }
 
     if (doc.source.kind === 'file') {
-      const handle = doc.source.handle
-      const writable = await handle.createWritable()
+      let data: Uint8Array
       if (doc.source.bedrockHeader) {
-        // Re-write the 8-byte Bedrock header, updating the payload size field
+        // Re-write the 8-byte Bedrock header with updated payload size
         const header = new Uint8Array(8)
-        header.set(doc.source.bedrockHeader.slice(0, 4)) // preserve version bytes
-        const view = new DataView(header.buffer)
-        view.setInt32(4, bytes.byteLength, true) // update size (LE int32)
-        await writable.write(header.buffer)
+        header.set(doc.source.bedrockHeader.slice(0, 4)) // keep version bytes
+        new DataView(header.buffer).setInt32(4, bytes.byteLength, true) // update size LE
+        data = new Uint8Array(8 + bytes.byteLength)
+        data.set(header)
+        data.set(bytes, 8)
+      } else {
+        data = bytes
       }
-      await writable.write((bytes.buffer as ArrayBuffer).slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
-      await writable.close()
+      await window.electronAPI.fs.writeFile(doc.source.path, data)
       markClean()
+      return
     }
+
+    // Fallback: shouldn't happen
+    await saveNbtFileAs(doc, 'output.dat')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markClean])
 
-  /** Save As — pick a new file location */
+  /** Save-As: prompt for a new file path, then write. */
   const saveNbtFileAs = useCallback(async (doc: NbtDocument, suggestedName?: string) => {
-    if (!window.showSaveFilePicker) {
-      // Fallback: download
-      const out = serializeNbt(doc)
-      const blob = new Blob([(out.buffer as ArrayBuffer).slice(out.byteOffset, out.byteOffset + out.byteLength)], { type: 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = suggestedName ?? 'output.dat'
-      a.click()
-      URL.revokeObjectURL(url)
-      markClean()
-      return
-    }
-    let handle: FileSystemFileHandle
-    try {
-      handle = await window.showSaveFilePicker({
-        suggestedName: suggestedName ?? 'output.dat',
-        types: [{ description: 'NBT file', accept: { 'application/octet-stream': ['.dat', '.nbt'] } }],
-      })
-    } catch {
-      return
-    }
-    const writable2 = await handle.createWritable()
-    const out2 = serializeNbt(doc)
-    await writable2.write((out2.buffer as ArrayBuffer).slice(out2.byteOffset, out2.byteOffset + out2.byteLength))
-    await writable2.close()
+    const bytes = serializeNbt(doc)
+    const name  = suggestedName ?? 'output.dat'
+    const savePath = await window.electronAPI.dialog.saveFile(name)
+    if (!savePath) return
+    await window.electronAPI.fs.writeFile(savePath, bytes)
     markClean()
   }, [markClean])
 
-  /** Flush pending LevelDB writes */
+  /** Flush pending LevelDB writes. */
   const saveLevelDB = useCallback(async (db: BedrockLevelDB) => {
     await db.flush()
     markClean()

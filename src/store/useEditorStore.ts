@@ -45,6 +45,10 @@ interface EditorState {
 
   markClean: () => void
   markDirty: () => void
+
+  /** True while a world folder is being opened / read */
+  isLoading: boolean
+  setIsLoading: (v: boolean) => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -81,6 +85,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedKey: null,
   expandedKeys: [],
   dirty: false,
+  isLoading: false,
 
   openNbtFile(doc, name) {
     set((s) => ({
@@ -189,4 +194,5 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   markClean() { set({ dirty: false }) },
   markDirty() { set({ dirty: true }) },
+  setIsLoading(v) { set({ isLoading: v }) },
 }))

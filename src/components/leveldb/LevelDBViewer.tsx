@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { List, Input, Typography, Tag, App } from 'antd'
-import { SearchOutlined, DatabaseOutlined, CodeOutlined } from '@ant-design/icons'
+import { SearchOutlined, DatabaseOutlined, CodeOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { BedrockLevelDB } from '../../lib/leveldb/db'
 import { describeKey, WELL_KNOWN_STRING_KEYS, stringKey } from '../../lib/leveldb/minecraft'
 import { parseNbt } from '../../lib/nbt/parser'
@@ -56,7 +56,7 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
   const { notification } = App.useApp()
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState<CatFilter>('Player')
-  const [, setLoading] = useState<string | null>(null)
+  const [loading, setLoading] = useState<string | null>(null)
 
   const allEntries = useMemo<KeyEntry[]>(() => {
     const seen = new Set<string>()
@@ -190,14 +190,16 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
             const { color } = categorise(entry.label)
             return (
               <List.Item
-                style={{ cursor: 'pointer', padding: '4px 8px' }}
-                onClick={() => openKey(entry)}
+                style={{ cursor: loading ? 'default' : 'pointer', padding: '4px 8px', opacity: loading && loading !== entry.label ? 0.5 : 1 }}
+                onClick={() => { if (!loading) openKey(entry) }}
                 actions={[
                   <Tag color={color} style={{ fontSize: 10 }}>{entry.category}</Tag>,
                 ]}
               >
                 <List.Item.Meta
-                  avatar={<CodeOutlined style={{ color: '#888', marginTop: 4 }} />}
+                  avatar={loading === entry.label
+                    ? <LoadingOutlined style={{ color: '#1677ff', marginTop: 4 }} spin />
+                    : <CodeOutlined style={{ color: '#888', marginTop: 4 }} />}
                   title={
                     <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>
                       {entry.label}

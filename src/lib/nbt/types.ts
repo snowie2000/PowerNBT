@@ -69,5 +69,5 @@ export interface NbtDocument {
 }
 
 export type NbtSource =
-  | { kind: 'file'; handle: FileSystemFileHandle; bedrockHeader?: Uint8Array }
+  | { kind: 'file'; path: string; bedrockHeader?: Uint8Array }
   | { kind: 'leveldb'; worldPath: string; key: Uint8Array }
