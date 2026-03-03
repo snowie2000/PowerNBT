@@ -1,0 +1,61 @@
+/* Global reset for full-screen app */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  background: #fff;
+}
+
+/* Ant Design Layout fill */
+.ant-layout {
+  height: 100%;
+}
+
+/* Monospace for NBT values */
+.nbt-value {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+/* ── Ant Design Tree overrides ──────────────────────────────────────────── */
+
+/* Allow tree node title area to shrink and clip instead of wrapping */
+.ant-tree .ant-tree-title {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Make the content node fill available width so the inner flex row works */
+.ant-tree .ant-tree-node-content-wrapper {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Two-line nodes need a bit more vertical padding */
+.ant-tree .ant-tree-treenode {
+  align-items: center;
+  padding-bottom: 1px;
+}
