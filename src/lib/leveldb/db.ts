@@ -1,12 +1,12 @@
 ﻿/**
  * BedrockLevelDB  thin proxy over the real LevelDB native module.
  *
- * All heavy lifting (SST parsing, WAL writing, CRC32C, manifest parsing) is gone.
- * The native `leveldb-zlib` module runs in the Electron main process and is
- * accessed via IPC through window.electronAPI.leveldb.
- *
- * Public interface is unchanged so no callers need to be updated.
+ * ARCHITECTURE: Only keys are loaded on open (values are tiny ~8-20 bytes each).
+ * Values are fetched lazily via IPC only when the user opens a specific key.
+ * This makes opening a 200MB world as fast as opening a 1MB world.
  */
+
+import { SINGLETON_KEYS, NBT_KEY_PREFIXES } from './minecraft'
 
 //  Public types 
 
@@ -20,8 +20,8 @@ export interface LevelDBEntry {
 export class BedrockLevelDB {
   readonly dirPath: string
 
-  /** In-memory snapshot, loaded on open and kept up-to-date on flush. */
-  private entries: Map<string, Uint8Array> = new Map()
+  /** Known key set — populated on open. Values are NOT preloaded. */
+  private entries: Set<string> = new Set()
   /** Writes staged since last flush. null = deletion. */
   private pendingWrites: Map<string, Uint8Array | null> = new Map()
   private isOpen = false
@@ -35,26 +35,44 @@ export class BedrockLevelDB {
   async open(): Promise<void> {
     await window.electronAPI.leveldb.open(this.dirPath)
 
-    // Snapshot all existing key-value pairs into memory so get() stays sync
-    // and the tree viewer can enumerate keys instantly.
-    const all = await window.electronAPI.leveldb.readAll(this.dirPath)
     this.entries.clear()
-    for (const entry of all) {
-      const key = new Uint8Array(entry.key)
-      const value = new Uint8Array(entry.value)
-      this.entries.set(keyStr(key), value)
+
+    // 1. Probe all fixed singleton keys in one IPC round-trip
+    const singletonBytes = SINGLETON_KEYS.map(k => Array.from(new TextEncoder().encode(k)))
+    const foundSingletons = await window.electronAPI.leveldb.probeKeys(this.dirPath, singletonBytes)
+    for (const k of foundSingletons) {
+      this.entries.add(keyStr(new Uint8Array(k)))
     }
+
+    // 2. Range-scan each NBT key prefix (player_, map_, VILLAGE_, etc.)
+    for (const prefix of NBT_KEY_PREFIXES) {
+      const prefixBytes = Array.from(new TextEncoder().encode(prefix))
+      const keys = await window.electronAPI.leveldb.getKeysWithPrefix(this.dirPath, prefixBytes)
+      for (const k of keys) {
+        this.entries.add(keyStr(new Uint8Array(k)))
+      }
+    }
+
     this.isOpen = true
-    console.debug(`[LevelDB] Opened: ${this.dirPath}  (${this.entries.size} keys)`)
+    console.debug(`[LevelDB] Opened: ${this.dirPath}  (${this.entries.size} NBT keys)`)
   }
 
-  //  Sync read / stage write 
+  //  Sync existence check 
 
-  get(key: Uint8Array): Uint8Array | null {
+  has(key: Uint8Array): boolean {
     const k = keyStr(key)
-    // Pending writes take precedence over the snapshot
+    if (this.pendingWrites.has(k)) return this.pendingWrites.get(k) !== null
+    return this.entries.has(k)
+  }
+
+  //  Async value fetch 
+
+  async get(key: Uint8Array): Promise<Uint8Array | null> {
+    const k = keyStr(key)
     if (this.pendingWrites.has(k)) return this.pendingWrites.get(k) ?? null
-    return this.entries.get(k) ?? null
+    if (!this.entries.has(k)) return null
+    const result = await window.electronAPI.leveldb.get(this.dirPath, Array.from(key))
+    return result ? new Uint8Array(result) : null
   }
 
   put(key: Uint8Array, value: Uint8Array): void {
@@ -65,21 +83,21 @@ export class BedrockLevelDB {
     this.pendingWrites.set(keyStr(key), null)
   }
 
-  *iterate(): Generator<LevelDBEntry> {
+  /** Yields known keys (excluding pending deletions). Values are NOT included. */
+  *iterate(): Generator<Uint8Array> {
     const seen = new Set<string>()
     for (const [k, v] of this.pendingWrites) {
-      if (v !== null) { yield { key: strToKey(k), value: v }; seen.add(k) }
+      if (v !== null) { yield strToKey(k); seen.add(k) }
     }
-    for (const [k, v] of this.entries) {
+    for (const k of this.entries) {
       if (!seen.has(k) && this.pendingWrites.get(k) !== null) {
-        yield { key: strToKey(k), value: v }
+        yield strToKey(k)
       }
     }
   }
 
   //  Flush 
 
-  /** Persist all staged writes atomically via a LevelDB batch write. */
   async flush(): Promise<void> {
     if (this.pendingWrites.size === 0) {
       console.log('[LevelDB flush] nothing pending')
@@ -99,9 +117,9 @@ export class BedrockLevelDB {
 
     await window.electronAPI.leveldb.batch(this.dirPath, ops)
 
-    // Commit to in-memory snapshot
+    // Commit to in-memory key set
     for (const [k, v] of this.pendingWrites) {
-      if (v !== null) this.entries.set(k, v)
+      if (v !== null) this.entries.add(k)
       else this.entries.delete(k)
     }
     this.pendingWrites.clear()

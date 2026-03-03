@@ -28,6 +28,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
   const [localString, setLocalString] = useState<string>(() =>
     node.type === TAG.String ? (node.value as string) ?? '' : ''
   )
+  const [localName, setLocalName] = useState(node.name)
 
   // Sync local state whenever the user selects a different node
   useEffect(() => {
@@ -35,13 +36,19 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
     setLocalFloat(null)
     setLocalLong(String(node.type === TAG.Long ? (node.value as bigint) : 0n))
     setLocalString(node.type === TAG.String ? (node.value as string) ?? '' : '')
+    setLocalName(node.name)
   }, [node.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      updateNodeName(fileIndex, node.key, e.target.value)
+      setLocalName(e.target.value)
     },
-    [fileIndex, node.key, updateNodeName],
+    [],
+  )
+
+  const commitName = useCallback(
+    () => { updateNodeName(fileIndex, node.key, localName) },
+    [fileIndex, node.key, localName, updateNodeName],
   )
 
   const handleValueChange = useCallback(
@@ -212,8 +219,9 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
         <Form layout="vertical" size="small">
           <Form.Item label="Key name">
             <Input
-              value={node.name}
+              value={localName}
               onChange={handleNameChange}
+              onBlur={commitName}
               placeholder="tag_name"
             />
           </Form.Item>

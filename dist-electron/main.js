@@ -143,6 +143,50 @@ ipcMain.handle("leveldb:batch", async (_e, dirPath, ops) => {
     value: op.value ? Buffer.from(op.value) : void 0
   })));
 });
+ipcMain.handle("leveldb:probeKeys", async (_e, dirPath, keys) => {
+  const db = openDBs.get(dirPath);
+  if (!db) throw new Error(`DB not open: ${dirPath}`);
+  const found = [];
+  for (const k of keys) {
+    const val = await db.get(Buffer.from(k));
+    if (val !== null && val !== void 0) found.push(k);
+  }
+  return found;
+});
+function prefixEnd(prefix) {
+  const end = Buffer.from(prefix);
+  for (let i = end.length - 1; i >= 0; i--) {
+    if (end[i] < 255) {
+      end[i]++;
+      return end.slice(0, i + 1);
+    }
+  }
+  return Buffer.alloc(0);
+}
+ipcMain.handle("leveldb:getKeysWithPrefix", async (_e, dirPath, prefix) => {
+  const db = openDBs.get(dirPath);
+  if (!db) throw new Error(`DB not open: ${dirPath}`);
+  const prefixBuf = Buffer.from(prefix);
+  const ltBuf = prefixEnd(prefixBuf);
+  const opts = { keyAsBuffer: true, values: false, gte: prefixBuf };
+  if (ltBuf.length > 0) opts.lt = ltBuf;
+  const result = [];
+  for await (const entry of db.getIterator(opts)) {
+    result.push(Array.from(entry[0]));
+  }
+  return result;
+});
+ipcMain.handle("leveldb:readAllKeys", async (_e, dirPath) => {
+  const db = openDBs.get(dirPath);
+  if (!db) throw new Error(`DB not open: ${dirPath}`);
+  const result = [];
+  const iter = db.getIterator({ keyAsBuffer: true, values: false });
+  for await (const entry of iter) {
+    result.push(Array.from(entry[0]));
+  }
+  console.log(`[leveldb:readAllKeys] ${dirPath}: ${result.length} keys`);
+  return result;
+});
 ipcMain.handle("leveldb:readAll", async (_e, dirPath) => {
   const db = openDBs.get(dirPath);
   if (!db) throw new Error(`DB not open: ${dirPath}`);

@@ -5,7 +5,7 @@ import { useEditorStore } from '../store/useEditorStore'
 import type { NbtDocument } from '../lib/nbt/types'
 
 export function useFileSystem() {
-  const { openNbtFile, openLevelDB, markClean, setIsLoading } = useEditorStore()
+  const { openNbtFile, openLevelDB, markClean, setIsLoading, dirty, closeWorldFiles, openFiles } = useEditorStore()
 
   // ── Open NBT files ──────────────────────────────────────────────────────
 
@@ -28,9 +28,28 @@ export function useFileSystem() {
     }
   }, [openNbtFile])
 
+  // ── Close world ──────────────────────────────────────────────────────────
+
+  const closeWorldFolder = useCallback(async (db: BedrockLevelDB, force = false): Promise<boolean> => {
+    if (!force && dirty) {
+      const ok = window.confirm('You have unsaved changes. Close the world anyway?')
+      if (!ok) return false
+    }
+    try { await db.close() } catch (e) { console.warn('[closeWorld] db.close():', e) }
+    closeWorldFiles(db)
+    return true
+  }, [dirty, closeWorldFiles])
+
   // ── Open Bedrock world folder ────────────────────────────────────────────
 
   const openWorldFolder = useCallback(async () => {
+    // Close any already-open world first (prompt if dirty)
+    const existing = openFiles.find(f => f.kind === 'leveldb')
+    if (existing && existing.kind === 'leveldb') {
+      const ok = await closeWorldFolder(existing.db)
+      if (!ok) return
+    }
+
     const worldPath = await window.electronAPI.dialog.openDirectory()
     if (!worldPath) return
 
@@ -73,7 +92,7 @@ export function useFileSystem() {
     } finally {
       setIsLoading(false)
     }
-  }, [openNbtFile, openLevelDB, setIsLoading])
+  }, [openNbtFile, openLevelDB, setIsLoading, closeWorldFolder, openFiles])
 
   // ── Save ─────────────────────────────────────────────────────────────────
 
@@ -131,5 +150,5 @@ export function useFileSystem() {
     markClean()
   }, [markClean])
 
-  return { openNbtFiles, openWorldFolder, saveNbtFile, saveNbtFileAs, saveLevelDB }
+  return { openNbtFiles, openWorldFolder, closeWorldFolder, saveNbtFile, saveNbtFileAs, saveLevelDB }
 }

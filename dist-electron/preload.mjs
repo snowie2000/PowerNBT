@@ -26,6 +26,9 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
     put: (dirPath, key, value) => electron.ipcRenderer.invoke("leveldb:put", dirPath, key, value),
     del: (dirPath, key) => electron.ipcRenderer.invoke("leveldb:del", dirPath, key),
     batch: (dirPath, ops) => electron.ipcRenderer.invoke("leveldb:batch", dirPath, ops),
+    probeKeys: (dirPath, keys) => electron.ipcRenderer.invoke("leveldb:probeKeys", dirPath, keys),
+    getKeysWithPrefix: (dirPath, prefix) => electron.ipcRenderer.invoke("leveldb:getKeysWithPrefix", dirPath, prefix),
+    readAllKeys: (dirPath) => electron.ipcRenderer.invoke("leveldb:readAllKeys", dirPath),
     readAll: (dirPath) => electron.ipcRenderer.invoke("leveldb:readAll", dirPath)
   }
 });

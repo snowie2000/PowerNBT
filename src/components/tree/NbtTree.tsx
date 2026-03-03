@@ -12,8 +12,13 @@ interface NbtTreeProps {
   root: NbtNode
 }
 
+/** WeakMap cache: same NbtNode reference → same DataNode, skipping JSX rebuild */
+const _dnCache = new WeakMap<NbtNode, DataNode>()
+
 /** Convert our NbtNode tree into Ant Design DataNode tree */
 function toDataNodes(node: NbtNode): DataNode {
+  const hit = _dnCache.get(node)
+  if (hit) return hit
   const isLeaf = !node.children || node.children.length === 0
   const hasValue = node.type !== TAG.Compound && node.type !== TAG.List && node.value != null
 
@@ -76,13 +81,15 @@ function toDataNodes(node: NbtNode): DataNode {
     </div>
   )
 
-  return {
+  const result: DataNode = {
     key: node.key,
     title: titleContent,
     isLeaf,
     children: node.children?.map(toDataNodes),
     icon: null, // icon is embedded in titleContent above
   }
+  _dnCache.set(node, result)
+  return result
 }
 
 function formatValue(type: TagId, value: NbtNode['value']): string {

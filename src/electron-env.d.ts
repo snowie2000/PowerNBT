@@ -26,6 +26,9 @@ interface ElectronAPI {
     put(dirPath: string, key: number[], value: number[]): Promise<void>
     del(dirPath: string, key: number[]): Promise<void>
     batch(dirPath: string, ops: Array<{ type: 'put' | 'del'; key: number[]; value?: number[] }>): Promise<void>
+    probeKeys(dirPath: string, keys: number[][]): Promise<number[][]>
+    getKeysWithPrefix(dirPath: string, prefix: number[]): Promise<number[][]>
+    readAllKeys(dirPath: string): Promise<number[][]>
     readAll(dirPath: string): Promise<Array<{ key: number[]; value: number[] }>>
   }
 }

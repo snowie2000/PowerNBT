@@ -188,6 +188,65 @@ ipcMain.handle('leveldb:batch', async (
   })))
 })
 
+ipcMain.handle('leveldb:probeKeys', async (
+  _e,
+  dirPath: string,
+  keys: number[][],
+): Promise<number[][]> => {
+  const db = openDBs.get(dirPath)
+  if (!db) throw new Error(`DB not open: ${dirPath}`)
+  const found: number[][] = []
+  for (const k of keys) {
+    const val = await db.get(Buffer.from(k))
+    if (val !== null && val !== undefined) found.push(k)
+  }
+  return found
+})
+
+function prefixEnd(prefix: Buffer): Buffer {
+  // Increment last byte to get exclusive upper bound for range scan
+  const end = Buffer.from(prefix)
+  for (let i = end.length - 1; i >= 0; i--) {
+    if (end[i] < 0xff) { end[i]++; return end.slice(0, i + 1) }
+  }
+  return Buffer.alloc(0) // overflow: no upper bound needed
+}
+
+ipcMain.handle('leveldb:getKeysWithPrefix', async (
+  _e,
+  dirPath: string,
+  prefix: number[],
+): Promise<number[][]> => {
+  const db = openDBs.get(dirPath)
+  if (!db) throw new Error(`DB not open: ${dirPath}`)
+  const prefixBuf = Buffer.from(prefix)
+  const ltBuf = prefixEnd(prefixBuf)
+  const opts: Record<string, unknown> = { keyAsBuffer: true, values: false, gte: prefixBuf }
+  if (ltBuf.length > 0) opts.lt = ltBuf
+  const result: number[][] = []
+  for await (const entry of db.getIterator(opts)) {
+    result.push(Array.from(entry[0] as Buffer))
+  }
+  return result
+})
+
+ipcMain.handle('leveldb:readAllKeys', async (
+  _e,
+  dirPath: string,
+): Promise<number[][]> => {
+  const db = openDBs.get(dirPath)
+  if (!db) throw new Error(`DB not open: ${dirPath}`)
+  const result: number[][] = []
+  // values:false tells LevelDB not to decompress/read values from disk at all
+  const iter = db.getIterator({ keyAsBuffer: true, values: false })
+  // Use the async iterator — it always yields [key, value] regardless of options
+  for await (const entry of iter) {
+    result.push(Array.from(entry[0] as Buffer))
+  }
+  console.log(`[leveldb:readAllKeys] ${dirPath}: ${result.length} keys`)
+  return result
+})
+
 ipcMain.handle('leveldb:readAll', async (
   _e,
   dirPath: string,

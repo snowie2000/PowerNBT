@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     put:     (dirPath: string, key: number[], value: number[])                                 => ipcRenderer.invoke('leveldb:put', dirPath, key, value) as Promise<void>,
     del:     (dirPath: string, key: number[])                                                  => ipcRenderer.invoke('leveldb:del', dirPath, key) as Promise<void>,
     batch:   (dirPath: string, ops: Array<{type:'put'|'del'; key:number[]; value?:number[]}>) => ipcRenderer.invoke('leveldb:batch', dirPath, ops) as Promise<void>,
+    probeKeys: (dirPath: string, keys: number[][])                                             => ipcRenderer.invoke('leveldb:probeKeys', dirPath, keys) as Promise<number[][]>,
+    getKeysWithPrefix: (dirPath: string, prefix: number[])                                    => ipcRenderer.invoke('leveldb:getKeysWithPrefix', dirPath, prefix) as Promise<number[][]>,
+    readAllKeys: (dirPath: string)                                                             => ipcRenderer.invoke('leveldb:readAllKeys', dirPath) as Promise<number[][]>,
     readAll: (dirPath: string)                                                                 => ipcRenderer.invoke('leveldb:readAll', dirPath) as Promise<Array<{key:number[]; value:number[]}>>,
   },
 })

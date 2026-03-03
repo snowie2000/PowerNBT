@@ -46,6 +46,9 @@ interface EditorState {
   markClean: () => void
   markDirty: () => void
 
+  /** Remove a leveldb entry and any nbt files from the same world path. */
+  closeWorldFiles: (db: BedrockLevelDB) => void
+
   /** True while a world folder is being opened / read */
   isLoading: boolean
   setIsLoading: (v: boolean) => void
@@ -53,28 +56,42 @@ interface EditorState {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Find a node by key path. Returns [node, parent, indexInParent] */
-function findNode(root: NbtNode, targetKey: string): [NbtNode, NbtNode | null, number] | null {
-  function walk(node: NbtNode, parent: NbtNode | null, idx: number): [NbtNode, NbtNode | null, number] | null {
-    if (node.key === targetKey) return [node, parent, idx]
-    for (let i = 0; i < (node.children?.length ?? 0); i++) {
-      const found = walk(node.children![i], node, i)
-      if (found) return found
-    }
-    return null
-  }
-  return walk(root, null, 0)
+/**
+ * Clone only the path from root down to `targetKey`.
+ * Every node NOT on that path keeps its original reference → O(depth) instead of O(n).
+ */
+function updatePath(
+  node: NbtNode,
+  targetKey: string,
+  updater: (n: NbtNode) => NbtNode,
+): NbtNode {
+  if (node.key === targetKey) return updater(node)
+  if (!node.children) return node
+  let changed = false
+  const newChildren = node.children.map(child => {
+    const next = updatePath(child, targetKey, updater)
+    if (next !== child) changed = true
+    return next
+  })
+  if (!changed) return node
+  return { ...node, children: newChildren }
 }
 
-function cloneNode(node: NbtNode): NbtNode {
-  return {
-    ...node,
-    children: node.children?.map(cloneNode),
+/** Remove a child node by key, cloning only the path to its parent. */
+function deletePath(node: NbtNode, targetKey: string): NbtNode {
+  if (!node.children) return node
+  const idx = node.children.findIndex(c => c.key === targetKey)
+  if (idx !== -1) {
+    return { ...node, children: node.children.filter((_, i) => i !== idx) }
   }
-}
-
-function mutateNbtDoc(doc: NbtDocument, mutate: (root: NbtNode) => NbtNode): NbtDocument {
-  return { ...doc, root: mutate(cloneNode(doc.root)) }
+  let changed = false
+  const newChildren = node.children.map(child => {
+    const next = deletePath(child, targetKey)
+    if (next !== child) changed = true
+    return next
+  })
+  if (!changed) return node
+  return { ...node, children: newChildren }
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -129,13 +146,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((s) => {
       const file = s.openFiles[fileIndex]
       if (!file || file.kind !== 'nbt') return s
-      const newDoc = mutateNbtDoc(file.doc, (root) => {
-        const result = findNode(root, nodeKey)
-        if (result) result[0].value = newValue
-        return root
-      })
+      const newRoot = updatePath(file.doc.root, nodeKey, n => ({ ...n, value: newValue }))
+      if (newRoot === file.doc.root) return s
       const openFiles = [...s.openFiles]
-      openFiles[fileIndex] = { ...file, doc: newDoc }
+      openFiles[fileIndex] = { ...file, doc: { ...file.doc, root: newRoot } }
       return { openFiles, dirty: true }
     })
   },
@@ -144,13 +158,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((s) => {
       const file = s.openFiles[fileIndex]
       if (!file || file.kind !== 'nbt') return s
-      const newDoc = mutateNbtDoc(file.doc, (root) => {
-        const result = findNode(root, nodeKey)
-        if (result) result[0].name = newName
-        return root
-      })
+      const newRoot = updatePath(file.doc.root, nodeKey, n => ({ ...n, name: newName }))
+      if (newRoot === file.doc.root) return s
       const openFiles = [...s.openFiles]
-      openFiles[fileIndex] = { ...file, doc: newDoc }
+      openFiles[fileIndex] = { ...file, doc: { ...file.doc, root: newRoot } }
       return { openFiles, dirty: true }
     })
   },
@@ -159,16 +170,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((s) => {
       const file = s.openFiles[fileIndex]
       if (!file || file.kind !== 'nbt') return s
-      const newDoc = mutateNbtDoc(file.doc, (root) => {
-        const result = findNode(root, nodeKey)
-        if (result) {
-          const [, parent, idx] = result
-          if (parent?.children) parent.children.splice(idx, 1)
-        }
-        return root
-      })
+      const newRoot = deletePath(file.doc.root, nodeKey)
+      if (newRoot === file.doc.root) return s
       const openFiles = [...s.openFiles]
-      openFiles[fileIndex] = { ...file, doc: newDoc }
+      openFiles[fileIndex] = { ...file, doc: { ...file.doc, root: newRoot } }
       return { openFiles, dirty: true, selectedKey: null }
     })
   },
@@ -177,22 +182,33 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((s) => {
       const file = s.openFiles[fileIndex]
       if (!file || file.kind !== 'nbt') return s
-      const newDoc = mutateNbtDoc(file.doc, (root) => {
-        const result = findNode(root, parentKey)
-        if (result) {
-          const [parent] = result
-          if (!parent.children) parent.children = []
-          parent.children.push(node)
-        }
-        return root
-      })
+      const newRoot = updatePath(file.doc.root, parentKey, parent => ({
+        ...parent,
+        children: [...(parent.children ?? []), node],
+      }))
+      if (newRoot === file.doc.root) return s
       const openFiles = [...s.openFiles]
-      openFiles[fileIndex] = { ...file, doc: newDoc }
+      openFiles[fileIndex] = { ...file, doc: { ...file.doc, root: newRoot } }
       return { openFiles, dirty: true }
     })
   },
 
   markClean() { set({ dirty: false }) },
   markDirty() { set({ dirty: true }) },
+
+  closeWorldFiles(db) {
+    set((s) => {
+      const worldRoot = db.dirPath.replace(/\/db$/, '').toLowerCase()
+      const openFiles = s.openFiles.filter(f => {
+        if (f.kind === 'leveldb' && f.db === db) return false
+        if (f.kind === 'nbt' && f.doc.source.kind === 'file' &&
+            f.doc.source.path.replace(/\\/g, '/').toLowerCase().startsWith(worldRoot)) return false
+        return true
+      })
+      const activeFileIndex = Math.min(s.activeFileIndex, Math.max(0, openFiles.length - 1))
+      return { openFiles, activeFileIndex, selectedKey: null, dirty: false }
+    })
+  },
+
   setIsLoading(v) { set({ isLoading: v }) },
 }))

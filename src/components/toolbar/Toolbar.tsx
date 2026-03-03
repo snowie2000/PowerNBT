@@ -1,10 +1,11 @@
 import React from 'react'
-import { Button, Space, Tooltip, Badge, Typography } from 'antd'
+import { Button, Space, Tooltip, Badge, Typography, Popconfirm } from 'antd'
 import {
   FolderOpenOutlined,
   DatabaseOutlined,
   SaveOutlined,
   SaveFilled,
+  CloseCircleOutlined,
 } from '@ant-design/icons'
 import { useEditorStore } from '../../store/useEditorStore'
 import { useFileSystem } from '../../hooks/useFileSystem'
@@ -14,9 +15,10 @@ const { Text } = Typography
 
 export const Toolbar: React.FC = () => {
   const { openFiles, activeFileIndex, dirty } = useEditorStore()
-  const { openNbtFiles, openWorldFolder, saveNbtFile, saveNbtFileAs, saveLevelDB } = useFileSystem()
+  const { openNbtFiles, openWorldFolder, closeWorldFolder, saveNbtFile, saveNbtFileAs, saveLevelDB } = useFileSystem()
 
   const activeFile: OpenFile | undefined = openFiles[activeFileIndex]
+  const openWorld = openFiles.find(f => f.kind === 'leveldb')
 
   const handleSave = async () => {
     if (!activeFile) return
@@ -79,6 +81,23 @@ export const Toolbar: React.FC = () => {
             Open World
           </Button>
         </Tooltip>
+
+        {openWorld && openWorld.kind === 'leveldb' && (
+          <Popconfirm
+            title="Close world?"
+            description={dirty ? 'You have unsaved changes — they will be lost.' : `Close "${openWorld.worldName}"?`}
+            onConfirm={() => closeWorldFolder(openWorld.db, true)}
+            okText="Close"
+            cancelText="Cancel"
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title={`Close ${openWorld.worldName}`}>
+              <Button icon={<CloseCircleOutlined />} danger>
+                Close World
+              </Button>
+            </Tooltip>
+          </Popconfirm>
+        )}
 
         <Tooltip title={dirty ? 'Save (Ctrl+S)' : 'No unsaved changes'}>
           <Badge dot={dirty} offset={[-2, 2]}>

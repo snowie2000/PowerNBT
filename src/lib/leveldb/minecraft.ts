@@ -21,12 +21,8 @@ export const GAME_FLAT_LAYERS        = 'game_flatworldlayers'
 export const REALMS_STORIES          = 'RealmsStoriesData_'
 export const SERVER_FORCED_CORRUPT   = 'DedicatedServerForcedCorruption'
 
-/**
- * All fixed string keys that should always be probed directly in addition to
- * what iterate() returns. Bedrock may write some of these lazily and they may
- * not appear in SST index scans depending on compaction state.
- */
-export const WELL_KNOWN_STRING_KEYS: string[] = [
+/** Fixed singleton keys that are probed directly on open */
+export const SINGLETON_KEYS: string[] = [
   LOCAL_PLAYER_KEY,
   LEVEL_DAT_KEY,
   AUTONOMOUS_ENTITIES,
@@ -40,8 +36,16 @@ export const WELL_KNOWN_STRING_KEYS: string[] = [
   SCHEDULER_WT,
   LEVEL_CHUNK_META,
   GAME_FLAT_LAYERS,
-  REALMS_STORIES,
   SERVER_FORCED_CORRUPT,
+]
+
+/**
+ * All fixed string keys that should always be probed directly in addition to
+ * what iterate() returns. Bedrock may write some of these lazily and they may
+ * not appear in SST index scans depending on compaction state.
+ */
+export const WELL_KNOWN_STRING_KEYS: string[] = [
+  ...SINGLETON_KEYS,
 ]
 
 /** String key prefixes (variable suffix after the prefix) */
@@ -56,6 +60,23 @@ export const PREFIX_DYNAMIC_PROPS   = 'DynamicProperties'
 export const PREFIX_SST_SALOG       = 'SST_SALOG'
 export const PREFIX_SST_WORD        = 'SST_WORD'
 export const PREFIX_REALMS          = 'RealmsStoriesData_'
+
+/**
+ * ASCII string prefixes for NBT-containing keys that have a variable suffix.
+ * We range-scan just these prefixes instead of iterating all keys.
+ * actorprefix and digp are intentionally excluded — they are binary/chunk data.
+ */
+export const NBT_KEY_PREFIXES: string[] = [
+  PREFIX_PLAYER,
+  PREFIX_MAP,
+  PREFIX_VILLAGE,
+  PREFIX_TICKINGAREA,
+  PREFIX_STRUCTURETEMPL,
+  PREFIX_DYNAMIC_PROPS,
+  PREFIX_SST_SALOG,
+  PREFIX_SST_WORD,
+  PREFIX_REALMS,
+]
 
 // ── Dimension IDs ────────────────────────────────────────────────────────────
 export const DIM_OVERWORLD = 0

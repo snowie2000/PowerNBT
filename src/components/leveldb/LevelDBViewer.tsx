@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { List, Input, Typography, Tag, App } from 'antd'
 import { SearchOutlined, DatabaseOutlined, CodeOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { BedrockLevelDB } from '../../lib/leveldb/db'
-import { describeKey, WELL_KNOWN_STRING_KEYS, stringKey } from '../../lib/leveldb/minecraft'
+import { describeKey } from '../../lib/leveldb/minecraft'
 import { parseNbt } from '../../lib/nbt/parser'
 import { useEditorStore } from '../../store/useEditorStore'
 
@@ -74,16 +74,9 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
       result.push({ key, label, category: cat })
     }
 
-    // 1. Enumerate all keys from the DB (SST + WAL)
-    for (const { key } of db.iterate()) addKey(key)
-
-    // 2. Also probe every well-known fixed string key directly.
-    //    This catches entries that may exist in the DB but were missed by
-    //    iterate() due to compaction state or index issues.
-    for (const knownKey of WELL_KNOWN_STRING_KEYS) {
-      const keyBytes = stringKey(knownKey)
-      if (db.get(keyBytes) !== null) addKey(keyBytes)
-    }
+    // Enumerate all known NBT keys (singletons + prefix-scanned)
+    for (const key of db.iterate()) addKey(key)
+    // (no separate well-known probe needed: db.open() already populated them)
 
     // Sort: Player/World first, then Chunk, then binary
     result.sort((a, b) => {
@@ -113,13 +106,14 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
   }, [allEntries])
 
   const openKey = async (entry: KeyEntry) => {
-    const value = db.get(entry.key)
-    if (!value) {
+    if (!db.has(entry.key)) {
       notification.error({ message: 'Key not found', description: entry.label, duration: 3 })
       return
     }
     setLoading(entry.label)
     try {
+      const value = await db.get(entry.key)
+      if (!value) throw new Error('Value is empty')
       const doc = await parseNbt((value.buffer as ArrayBuffer).slice(value.byteOffset, value.byteOffset + value.byteLength), {
         kind: 'leveldb',
         worldPath: worldName,
