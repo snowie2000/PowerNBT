@@ -7,6 +7,8 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 const { LevelDB } = require('leveldb-zlib') as typeof import('leveldb-zlib')
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const nbt = require('prismarine-nbt') as any
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -267,4 +269,40 @@ ipcMain.handle('leveldb:readAll', async (
   }
   console.log(`[leveldb:readAll] ${dirPath}: ${result.length} keys`)
   return result
+})
+
+// ─── IPC: NBT parse / serialize (prismarine-nbt runs in main to avoid eval in renderer) ───
+
+ipcMain.handle('nbt:parse', async (
+  _e,
+  bytes: number[],
+  littleEndianHint: boolean | null,
+): Promise<{ pnbt: unknown; littleEndian: boolean }> => {
+  const buf = Buffer.from(bytes)
+  const formats: Array<'little' | 'big'> = littleEndianHint === true
+    ? ['little']
+    : littleEndianHint === false
+      ? ['big']
+      : ['little', 'big']
+  const errors: string[] = []
+  for (const fmt of formats) {
+    try {
+      const { parsed } = await nbt.parse(buf, fmt)
+      return { pnbt: parsed, littleEndian: fmt === 'little' }
+    } catch (e) {
+      errors.push(`${fmt}: ${e}`)
+    }
+  }
+  throw new Error(`Failed to parse NBT:\n${errors.join('\n')}`)
+})
+
+ipcMain.handle('nbt:serialize', (
+  _e,
+  pnbt: unknown,
+  littleEndian: boolean,
+): number[] => {
+  const fmt = littleEndian ? 'little' : 'big'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const buf: Buffer = nbt.writeUncompressed(pnbt as any, fmt)
+  return Array.from(buf)
 })

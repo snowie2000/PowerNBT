@@ -27,9 +27,9 @@ export const Toolbar: React.FC = () => {
         if (activeFile.doc.source.kind === 'file') {
           await saveNbtFile(activeFile.doc)
         } else if (activeFile.doc.source.kind === 'leveldb') {
-          // Find the open DB instance whose worldName matches the key's worldPath
+          // Find the open DB instance by dirPath (worldPath is now db.dirPath)
           const worldPath = activeFile.doc.source.worldPath
-          const lvlFile = openFiles.find((f) => f.kind === 'leveldb' && f.worldName === worldPath)
+          const lvlFile = openFiles.find((f) => f.kind === 'leveldb' && f.db.dirPath === worldPath)
           const db = lvlFile?.kind === 'leveldb' ? lvlFile.db : undefined
           if (db) {
             await saveNbtFile(activeFile.doc, db)

@@ -1,5 +1,3 @@
-import nbt from 'prismarine-nbt'
-import { Buffer } from 'buffer'
 import type { NbtDocument, NbtNode, TagId } from './types'
 import { TAG } from './types'
 
@@ -92,47 +90,30 @@ function typeNameToId(typeName: string): TagId {
 
 /**
  * Parse raw NBT binary data into our editor's document model.
- * Automatically tries Bedrock (little-endian) then Java (big-endian).
+ * Parsing is delegated to the main process (prismarine-nbt uses eval and
+ * cannot run inside the Vite-bundled renderer).
  */
 export async function parseNbt(
   data: ArrayBuffer,
   source: NbtDocument['source'],
 ): Promise<NbtDocument> {
-  const buf = Buffer.from(data)
-
-  // LevelDB values are always Bedrock little-endian — don't try big-endian,
-  // which can silently mis-parse an LE compound as a valid BE structure.
-  const formatsToTry: Array<'little' | 'big'> =
-    source.kind === 'leveldb' ? ['little'] : ['little', 'big']
-
-  const errors: string[] = []
-  for (const fmt of formatsToTry) {
-    try {
-      const { parsed } = await nbt.parse(buf, fmt)
-      const root = convertValue(
-        parsed.name ?? '',
-        parsed.type,
-        parsed.value,
-        'root',
-      )
-      return { root, littleEndian: fmt === 'little', source }
-    } catch (e) {
-      errors.push(`${fmt}: ${e}`)
-    }
-  }
-
-  throw new Error(`Failed to parse NBT data in any known format:\n${errors.join('\n')}`)
+  // Hint: leveldb values are always little-endian; files try both
+  const littleEndianHint: boolean | null = source.kind === 'leveldb' ? true : null
+  const bytes = Array.from(new Uint8Array(data))
+  const { pnbt, littleEndian } = await window.electronAPI.nbt.parse(bytes, littleEndianHint)
+  const parsed = pnbt as { name?: string; type: string; value: unknown }
+  const root = convertValue(parsed.name ?? '', parsed.type, parsed.value, 'root')
+  return { root, littleEndian, source }
 }
 
 /**
  * Serialise our NbtNode tree back to binary NBT.
+ * Serialization is delegated to the main process.
  */
-export function serializeNbt(doc: NbtDocument): Uint8Array {
+export async function serializeNbt(doc: NbtDocument): Promise<Uint8Array> {
   const pnbt = nodeToP(doc.root)
-  const fmt = doc.littleEndian ? 'little' : 'big'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const buf = nbt.writeUncompressed(pnbt as any, fmt)
-  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)
+  const bytes = await window.electronAPI.nbt.serialize(pnbt, doc.littleEndian)
+  return new Uint8Array(bytes)
 }
 
 function nodeToP(node: NbtNode): PNbtValue {

@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState } from 'react'
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react'
 import { Tree, Input, Dropdown, type MenuProps } from 'antd'
 import { SearchOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
@@ -92,6 +92,19 @@ function toDataNodes(node: NbtNode): DataNode {
   return result
 }
 
+/** Memoised wrapper so titleRender result skips re-render when props are stable */
+interface NodeTitleProps {
+  nodeKey: string
+  type: TagId
+  title: React.ReactNode
+  menuItems: (key: string, type: TagId) => MenuProps['items']
+}
+const NodeTitle = React.memo<NodeTitleProps>(({ nodeKey, type, title, menuItems }) => (
+  <Dropdown menu={{ items: menuItems(nodeKey, type) }} trigger={['contextMenu']}>
+    <div style={{ width: '100%', minWidth: 0 }}>{title}</div>
+  </Dropdown>
+))
+
 function formatValue(type: TagId, value: NbtNode['value']): string {
   if (value === null) return ''
   if (type === TAG.ByteArray) return `[${(value as Int8Array).byteLength} bytes]`
@@ -122,9 +135,23 @@ function filterTree(node: NbtNode, query: string): NbtNode | null {
 }
 
 const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
-  const { selectedKey, expandedKeys, selectNode, setExpandedKeys, deleteNode } = useEditorStore()
+  const { selectedKey, selectNode, deleteNode } = useEditorStore()
   const [search, setSearch] = useState('')
   const [addModalParentKey, setAddModalParentKey] = useState<string | null>(null)
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([])
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [treeHeight, setTreeHeight] = useState(600)
+
+  // Measure container for virtual scrolling — only renders visible rows
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const update = () => { if (el.clientHeight > 0) setTreeHeight(el.clientHeight) }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const displayRoot = useMemo(() => {
     if (!search.trim()) return root
@@ -165,18 +192,17 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
     [fileIndex, deleteNode],
   )
 
+  // titleRender returns a memo'd NodeTitle — stable props → no re-render on expand/collapse
   const titleRender = useCallback((node: { key: React.Key; title?: React.ReactNode }) => {
     const key = node.key as string
     const type = nodeTypeMap.get(key) ?? TAG.End
     return (
-      <Dropdown
-        menu={{ items: contextMenuFor(key, type) }}
-        trigger={['contextMenu']}
-      >
-        <div style={{ width: '100%', minWidth: 0 }}>
-          {node.title as React.ReactNode}
-        </div>
-      </Dropdown>
+      <NodeTitle
+        nodeKey={key}
+        type={type}
+        title={node.title as React.ReactNode}
+        menuItems={contextMenuFor}
+      />
     )
   }, [nodeTypeMap, contextMenuFor])
 
@@ -192,7 +218,7 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
         style={{ margin: '8px 8px 4px' }}
       />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>
         <Tree
           showLine={{ showLeafIcon: false }}
           blockNode
@@ -202,6 +228,7 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
           onSelect={(keys) => selectNode((keys[0] as string) ?? null)}
           onExpand={(keys) => setExpandedKeys(keys as string[])}
           titleRender={titleRender}
+          height={treeHeight}
         />
       </div>
 

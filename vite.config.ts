@@ -5,6 +5,7 @@ import electron from 'vite-plugin-electron/simple'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './',
   plugins: [
     react(),
     nodePolyfills({
@@ -17,8 +18,8 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              // Native Node.js modules cannot be bundled — keep as external require()
-              external: ['leveldb-zlib'],
+              // Native Node.js modules and Node-only libs cannot be bundled
+              external: ['leveldb-zlib', 'prismarine-nbt'],
             },
           },
         },

@@ -116,7 +116,7 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
       if (!value) throw new Error('Value is empty')
       const doc = await parseNbt((value.buffer as ArrayBuffer).slice(value.byteOffset, value.byteOffset + value.byteLength), {
         kind: 'leveldb',
-        worldPath: worldName,
+        worldPath: db.dirPath,
         key: entry.key,
       })
       openNbtFile(doc, entry.label)

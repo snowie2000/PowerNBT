@@ -102,7 +102,7 @@ export function useFileSystem() {
    * For leveldb sources calls db.put() + db.flush().
    */
   const saveNbtFile = useCallback(async (doc: NbtDocument, db?: BedrockLevelDB) => {
-    const bytes = serializeNbt(doc)
+    const bytes = await serializeNbt(doc)
 
     if (doc.source.kind === 'leveldb' && db) {
       db.put(doc.source.key, bytes)
@@ -136,7 +136,7 @@ export function useFileSystem() {
 
   /** Save-As: prompt for a new file path, then write. */
   const saveNbtFileAs = useCallback(async (doc: NbtDocument, suggestedName?: string) => {
-    const bytes = serializeNbt(doc)
+    const bytes = await serializeNbt(doc)
     const name  = suggestedName ?? 'output.dat'
     const savePath = await window.electronAPI.dialog.saveFile(name)
     if (!savePath) return

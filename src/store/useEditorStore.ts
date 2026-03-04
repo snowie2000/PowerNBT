@@ -18,8 +18,6 @@ interface EditorState {
 
   /** Selected node key path in the tree (dots-separated) */
   selectedKey: string | null
-  /** Expanded tree node keys */
-  expandedKeys: string[]
 
   /** True when there are unsaved changes */
   dirty: boolean
@@ -32,7 +30,6 @@ interface EditorState {
   setActiveFile: (index: number) => void
 
   selectNode: (key: string | null) => void
-  setExpandedKeys: (keys: string[]) => void
 
   /** Update a node value by its tree key path */
   updateNodeValue: (fileIndex: number, nodeKey: string, newValue: NbtNode['value']) => void
@@ -100,7 +97,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   openFiles: [],
   activeFileIndex: 0,
   selectedKey: null,
-  expandedKeys: [],
   dirty: false,
   isLoading: false,
 
@@ -136,10 +132,6 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   selectNode(key) {
     set({ selectedKey: key })
-  },
-
-  setExpandedKeys(expandedKeys) {
-    set({ expandedKeys })
   },
 
   updateNodeValue(fileIndex, nodeKey, newValue) {
@@ -201,8 +193,14 @@ export const useEditorStore = create<EditorState>((set) => ({
       const worldRoot = db.dirPath.replace(/\/db$/, '').toLowerCase()
       const openFiles = s.openFiles.filter(f => {
         if (f.kind === 'leveldb' && f.db === db) return false
-        if (f.kind === 'nbt' && f.doc.source.kind === 'file' &&
-            f.doc.source.path.replace(/\\/g, '/').toLowerCase().startsWith(worldRoot)) return false
+        if (f.kind === 'nbt') {
+          // File-based tabs from the world folder (e.g. level.dat)
+          if (f.doc.source.kind === 'file' &&
+              f.doc.source.path.replace(/\\/g, '/').toLowerCase().startsWith(worldRoot)) return false
+          // LevelDB-sourced tabs (e.g. opened NBT keys from this world)
+          if (f.doc.source.kind === 'leveldb' &&
+              f.doc.source.worldPath === db.dirPath) return false
+        }
         return true
       })
       const activeFileIndex = Math.min(s.activeFileIndex, Math.max(0, openFiles.length - 1))

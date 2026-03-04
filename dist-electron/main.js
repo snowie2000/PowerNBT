@@ -1,206 +1,196 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
-import path, { dirname } from "path";
-import { fileURLToPath } from "url";
-import fs from "fs/promises";
-import { existsSync } from "fs";
-import { createRequire } from "module";
-const require$1 = createRequire(import.meta.url);
-const { LevelDB } = require$1("leveldb-zlib");
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = dirname(__filename$1);
-function createWindow() {
-  const win = new BrowserWindow({
+import { app as u, BrowserWindow as h, ipcMain as l, dialog as p } from "electron";
+import d, { dirname as B } from "path";
+import { fileURLToPath as _ } from "url";
+import c from "fs/promises";
+import { existsSync as v } from "fs";
+import { createRequire as $ } from "module";
+const m = $(import.meta.url), { LevelDB: D } = m("leveldb-zlib"), b = m("prismarine-nbt"), E = _(import.meta.url), w = B(E);
+function y() {
+  const n = new h({
     width: 1400,
     height: 900,
     title: "PowerNBT",
     webPreferences: {
-      preload: path.join(__dirname$1, "preload.mjs"),
-      contextIsolation: true,
-      nodeIntegration: false
+      preload: d.join(w, "preload.mjs"),
+      contextIsolation: !0,
+      nodeIntegration: !1
     }
   });
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
-    win.webContents.openDevTools();
-  } else {
-    win.loadFile(path.join(__dirname$1, "../dist/index.html"));
-  }
+  process.env.VITE_DEV_SERVER_URL ? (n.loadURL(process.env.VITE_DEV_SERVER_URL), n.webContents.openDevTools()) : n.loadFile(d.join(w, "../dist/index.html"));
 }
-app.whenReady().then(() => {
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+u.whenReady().then(() => {
+  y(), u.on("activate", () => {
+    h.getAllWindows().length === 0 && y();
   });
 });
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+u.on("window-all-closed", () => {
+  process.platform !== "darwin" && u.quit();
 });
-ipcMain.handle("fs:readFile", async (_e, filePath) => {
+l.handle("fs:readFile", async (n, e) => {
   try {
-    const buf = await fs.readFile(filePath);
-    return new Uint8Array(buf);
+    const t = await c.readFile(e);
+    return new Uint8Array(t);
   } catch {
     return null;
   }
 });
-ipcMain.handle("fs:writeFile", async (_e, filePath, data) => {
-  await fs.writeFile(filePath, Buffer.from(data));
+l.handle("fs:writeFile", async (n, e, t) => {
+  await c.writeFile(e, Buffer.from(t));
 });
-ipcMain.handle("fs:appendFile", async (_e, filePath, data) => {
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data instanceof Uint8Array ? data : Object.values(data));
-  console.log(`[main fs:appendFile] path=${filePath}  bytes=${buf.byteLength}`);
-  const fh = await fs.open(filePath, "a");
+l.handle("fs:appendFile", async (n, e, t) => {
+  const r = Buffer.isBuffer(t) ? t : Buffer.from(t instanceof Uint8Array ? t : Object.values(t));
+  console.log(`[main fs:appendFile] path=${e}  bytes=${r.byteLength}`);
+  const o = await c.open(e, "a");
   try {
-    const { bytesWritten } = await fh.write(buf);
-    console.log(`[main fs:appendFile] bytesWritten=${bytesWritten}`);
+    const { bytesWritten: a } = await o.write(r);
+    console.log(`[main fs:appendFile] bytesWritten=${a}`);
   } finally {
-    await fh.close();
+    await o.close();
   }
 });
-ipcMain.handle("fs:fileSize", async (_e, filePath) => {
+l.handle("fs:fileSize", async (n, e) => {
   try {
-    const stat = await fs.stat(filePath);
-    return stat.size;
+    return (await c.stat(e)).size;
   } catch {
     return 0;
   }
 });
-ipcMain.handle("fs:exists", async (_e, filePath) => {
-  return existsSync(filePath);
-});
-ipcMain.handle("fs:readdir", async (_e, dirPath) => {
+l.handle("fs:exists", async (n, e) => v(e));
+l.handle("fs:readdir", async (n, e) => {
   try {
-    return await fs.readdir(dirPath);
+    return await c.readdir(e);
   } catch {
     return [];
   }
 });
-ipcMain.handle("fs:mkdir", async (_e, dirPath) => {
-  await fs.mkdir(dirPath, { recursive: true });
+l.handle("fs:mkdir", async (n, e) => {
+  await c.mkdir(e, { recursive: !0 });
 });
-ipcMain.handle("dialog:openDirectory", async () => {
-  const result = await dialog.showOpenDialog({
+l.handle("dialog:openDirectory", async () => {
+  const n = await p.showOpenDialog({
     title: "Open Minecraft Bedrock World Folder",
     properties: ["openDirectory"]
   });
-  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+  return n.canceled || n.filePaths.length === 0 ? null : n.filePaths[0];
 });
-ipcMain.handle("dialog:openFiles", async (_e, filters) => {
-  const result = await dialog.showOpenDialog({
+l.handle("dialog:openFiles", async (n, e) => {
+  const t = await p.showOpenDialog({
     title: "Open NBT File",
     properties: ["openFile", "multiSelections"],
-    filters: filters ?? [
+    filters: e ?? [
       { name: "NBT Files", extensions: ["dat", "nbt", "mcstructure", "dat_old"] }
     ]
   });
-  return result.canceled ? null : result.filePaths;
+  return t.canceled ? null : t.filePaths;
 });
-ipcMain.handle("dialog:saveFile", async (_e, defaultPath) => {
-  const result = await dialog.showSaveDialog({
-    defaultPath,
+l.handle("dialog:saveFile", async (n, e) => {
+  const t = await p.showSaveDialog({
+    defaultPath: e,
     filters: [{ name: "NBT File", extensions: ["dat", "nbt"] }]
   });
-  return result.canceled || !result.filePath ? null : result.filePath;
+  return t.canceled || !t.filePath ? null : t.filePath;
 });
-ipcMain.handle("path:join", (_e, ...parts) => path.join(...parts));
-ipcMain.handle("path:basename", (_e, p) => path.basename(p));
-const openDBs = /* @__PURE__ */ new Map();
-ipcMain.handle("leveldb:open", async (_e, dirPath) => {
-  if (openDBs.has(dirPath)) return;
-  const db = new LevelDB(dirPath, { createIfMissing: false });
-  await db.open();
-  openDBs.set(dirPath, db);
+l.handle("path:join", (n, ...e) => d.join(...e));
+l.handle("path:basename", (n, e) => d.basename(e));
+const s = /* @__PURE__ */ new Map();
+l.handle("leveldb:open", async (n, e) => {
+  if (s.has(e)) return;
+  const t = new D(e, { createIfMissing: !1 });
+  await t.open(), s.set(e, t);
 });
-ipcMain.handle("leveldb:close", async (_e, dirPath) => {
-  const db = openDBs.get(dirPath);
-  if (db) {
-    await db.close();
-    openDBs.delete(dirPath);
-  }
+l.handle("leveldb:close", async (n, e) => {
+  const t = s.get(e);
+  t && (await t.close(), s.delete(e));
 });
-ipcMain.handle("leveldb:get", async (_e, dirPath, key) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  const val = await db.get(Buffer.from(key));
-  return val ? Array.from(val) : null;
+l.handle("leveldb:get", async (n, e, t) => {
+  const r = s.get(e);
+  if (!r) throw new Error(`DB not open: ${e}`);
+  const o = await r.get(Buffer.from(t));
+  return o ? Array.from(o) : null;
 });
-ipcMain.handle("leveldb:put", async (_e, dirPath, key, value) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  await db.put(Buffer.from(key), Buffer.from(value));
+l.handle("leveldb:put", async (n, e, t, r) => {
+  const o = s.get(e);
+  if (!o) throw new Error(`DB not open: ${e}`);
+  await o.put(Buffer.from(t), Buffer.from(r));
 });
-ipcMain.handle("leveldb:del", async (_e, dirPath, key) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  await db.delete(Buffer.from(key));
+l.handle("leveldb:del", async (n, e, t) => {
+  const r = s.get(e);
+  if (!r) throw new Error(`DB not open: ${e}`);
+  await r.delete(Buffer.from(t));
 });
-ipcMain.handle("leveldb:batch", async (_e, dirPath, ops) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  await db.batch(ops.map((op) => ({
-    type: op.type,
-    key: Buffer.from(op.key),
-    value: op.value ? Buffer.from(op.value) : void 0
+l.handle("leveldb:batch", async (n, e, t) => {
+  const r = s.get(e);
+  if (!r) throw new Error(`DB not open: ${e}`);
+  await r.batch(t.map((o) => ({
+    type: o.type,
+    key: Buffer.from(o.key),
+    value: o.value ? Buffer.from(o.value) : void 0
   })));
 });
-ipcMain.handle("leveldb:probeKeys", async (_e, dirPath, keys) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  const found = [];
-  for (const k of keys) {
-    const val = await db.get(Buffer.from(k));
-    if (val !== null && val !== void 0) found.push(k);
+l.handle("leveldb:probeKeys", async (n, e, t) => {
+  const r = s.get(e);
+  if (!r) throw new Error(`DB not open: ${e}`);
+  const o = [];
+  for (const a of t) {
+    const i = await r.get(Buffer.from(a));
+    i != null && o.push(a);
   }
-  return found;
+  return o;
 });
-function prefixEnd(prefix) {
-  const end = Buffer.from(prefix);
-  for (let i = end.length - 1; i >= 0; i--) {
-    if (end[i] < 255) {
-      end[i]++;
-      return end.slice(0, i + 1);
-    }
-  }
+function A(n) {
+  const e = Buffer.from(n);
+  for (let t = e.length - 1; t >= 0; t--)
+    if (e[t] < 255)
+      return e[t]++, e.slice(0, t + 1);
   return Buffer.alloc(0);
 }
-ipcMain.handle("leveldb:getKeysWithPrefix", async (_e, dirPath, prefix) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  const prefixBuf = Buffer.from(prefix);
-  const ltBuf = prefixEnd(prefixBuf);
-  const opts = { keyAsBuffer: true, values: false, gte: prefixBuf };
-  if (ltBuf.length > 0) opts.lt = ltBuf;
-  const result = [];
-  for await (const entry of db.getIterator(opts)) {
-    result.push(Array.from(entry[0]));
-  }
-  return result;
+l.handle("leveldb:getKeysWithPrefix", async (n, e, t) => {
+  const r = s.get(e);
+  if (!r) throw new Error(`DB not open: ${e}`);
+  const o = Buffer.from(t), a = A(o), i = { keyAsBuffer: !0, values: !1, gte: o };
+  a.length > 0 && (i.lt = a);
+  const f = [];
+  for await (const g of r.getIterator(i))
+    f.push(Array.from(g[0]));
+  return f;
 });
-ipcMain.handle("leveldb:readAllKeys", async (_e, dirPath) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  const result = [];
-  const iter = db.getIterator({ keyAsBuffer: true, values: false });
-  for await (const entry of iter) {
-    result.push(Array.from(entry[0]));
-  }
-  console.log(`[leveldb:readAllKeys] ${dirPath}: ${result.length} keys`);
-  return result;
+l.handle("leveldb:readAllKeys", async (n, e) => {
+  const t = s.get(e);
+  if (!t) throw new Error(`DB not open: ${e}`);
+  const r = [], o = t.getIterator({ keyAsBuffer: !0, values: !1 });
+  for await (const a of o)
+    r.push(Array.from(a[0]));
+  return console.log(`[leveldb:readAllKeys] ${e}: ${r.length} keys`), r;
 });
-ipcMain.handle("leveldb:readAll", async (_e, dirPath) => {
-  const db = openDBs.get(dirPath);
-  if (!db) throw new Error(`DB not open: ${dirPath}`);
-  const result = [];
-  const iter = db.getIterator({ keyAsBuffer: true, valueAsBuffer: true });
+l.handle("leveldb:readAll", async (n, e) => {
+  const t = s.get(e);
+  if (!t) throw new Error(`DB not open: ${e}`);
+  const r = [], o = t.getIterator({ keyAsBuffer: !0, valueAsBuffer: !0 });
   try {
-    while (true) {
-      const entry = await iter.next();
-      if (!entry || entry.length === 0) break;
-      result.push({ key: Array.from(entry[1]), value: Array.from(entry[0]) });
+    for (; ; ) {
+      const a = await o.next();
+      if (!a || a.length === 0) break;
+      r.push({ key: Array.from(a[1]), value: Array.from(a[0]) });
     }
   } finally {
-    await iter.end();
+    await o.end();
   }
-  console.log(`[leveldb:readAll] ${dirPath}: ${result.length} keys`);
-  return result;
+  return console.log(`[leveldb:readAll] ${e}: ${r.length} keys`), r;
+});
+l.handle("nbt:parse", async (n, e, t) => {
+  const r = Buffer.from(e), o = t === !0 ? ["little"] : t === !1 ? ["big"] : ["little", "big"], a = [];
+  for (const i of o)
+    try {
+      const { parsed: f } = await b.parse(r, i);
+      return { pnbt: f, littleEndian: i === "little" };
+    } catch (f) {
+      a.push(`${i}: ${f}`);
+    }
+  throw new Error(`Failed to parse NBT:
+${a.join(`
+`)}`);
+});
+l.handle("nbt:serialize", (n, e, t) => {
+  const r = t ? "little" : "big", o = b.writeUncompressed(e, r);
+  return Array.from(o);
 });
