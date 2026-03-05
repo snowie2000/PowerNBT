@@ -93,7 +93,16 @@ export const AppLayout: React.FC = () => {
       {openFiles.length === 0 ? (
         <WelcomeScreen onOpenFile={openNbtFiles} onOpenWorld={openWorldFolder} />
       ) : (
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <>
+          <Tabs
+            size="small"
+            items={tabItems}
+            activeKey={String(activeFileIndex)}
+            onChange={(k) => setActiveFile(Number(k))}
+            style={{ background: '#fff', padding: '0 4px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}
+            tabBarStyle={{ margin: 0 }}
+          />
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
           {/* Left panel */}
           <div
             ref={siderRef}
@@ -102,27 +111,15 @@ export const AppLayout: React.FC = () => {
               minWidth: siderWidth,
               maxWidth: siderWidth,
               background: '#fff',
-              display: 'flex',
-              flexDirection: 'column',
               overflow: 'hidden',
             }}
           >
-            <Tabs
-              size="small"
-              items={tabItems}
-              activeKey={String(activeFileIndex)}
-              onChange={(k) => setActiveFile(Number(k))}
-              style={{ padding: '0 4px', borderBottom: '1px solid #f0f0f0' }}
-              tabBarStyle={{ margin: 0 }}
-            />
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              {activeFile?.kind === 'nbt' && (
-                <NbtTree fileIndex={activeFileIndex} root={activeFile.doc.root} />
-              )}
-              {activeFile?.kind === 'leveldb' && (
-                <LevelDBViewer db={activeFile.db} worldName={activeFile.worldName} />
-              )}
-            </div>
+            {activeFile?.kind === 'nbt' && (
+              <NbtTree fileIndex={activeFileIndex} root={activeFile.doc.root} />
+            )}
+            {activeFile?.kind === 'leveldb' && (
+              <LevelDBViewer db={activeFile.db} worldName={activeFile.worldName} />
+            )}
           </div>
 
           {/* Drag divider */}
@@ -161,7 +158,8 @@ export const AppLayout: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
+          </div>
+        </>
       )}
     </Layout>
   )
