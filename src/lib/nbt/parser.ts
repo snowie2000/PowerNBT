@@ -1,185 +1,146 @@
-import type { NbtDocument, NbtNode, TagId } from './types'
+﻿import type { NbtDocument, NbtNode, TagId } from './types'
 import { TAG } from './types'
+import {
+  read as nbtRead,
+  write as nbtWrite,
+  NBTData,
+  TAG as NTAG,
+  TAG_TYPE,
+  getTagType,
+  Int8 as NInt8,
+  Int16 as NInt16,
+  Int32 as NInt32,
+  Float32 as NFloat32,
+} from 'nbtify'
+import type { Tag, CompoundTag } from 'nbtify'
 
-// prismarine-nbt internal value types
-interface PNbtValue {
-  type: string
-  name?: string
-  value: unknown
-}
+// --- nbtify -> NbtNode -------------------------------------------------------
 
-/** Convert a prismarine-nbt parsed tree into our NbtNode tree */
-function convertValue(
-  name: string,
-  type: string,
-  value: unknown,
-  keyPrefix: string,
-): NbtNode {
-  const tagId = typeNameToId(type)
-  const key = keyPrefix
+function convertNbtify(name: string, value: unknown, keyPrefix: string): NbtNode {
+  const tagType = getTagType(value as Tag)
 
-  if (type === 'compound') {
-    const compound = value as Record<string, PNbtValue>
+  if (tagType === null) {
+    return { key: keyPrefix, type: TAG.End, name, value: null }
+  }
+
+  if (tagType === NTAG.COMPOUND) {
+    const compound = value as Record<string, unknown>
     const children: NbtNode[] = Object.entries(compound).map(
-      ([k, v], i) => convertValue(k, v.type, v.value, `${key}.${i}-${k}`),
+      ([k, v], i) => convertNbtify(k, v, `${keyPrefix}.${i}-${k}`),
     )
-    return { key, type: tagId, name, value: null, children }
+    return { key: keyPrefix, type: TAG.Compound, name, value: null, children }
   }
 
-  if (type === 'list') {
-    const list = value as { type: string; value: unknown[] }
-    const listType = typeNameToId(list.type)
-    const children: NbtNode[] = list.value.map((v, i) =>
-      convertValue(`[${i}]`, list.type, v, `${key}[${i}]`),
+  if (tagType === NTAG.LIST) {
+    const list = value as unknown[]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const elemTypeId: number = (list as any)[TAG_TYPE] ?? NTAG.END
+    const children: NbtNode[] = list.map((v, i) =>
+      convertNbtify(`[${i}]`, v, `${keyPrefix}[${i}]`),
     )
-    return { key, type: tagId, name, value: null, children, listType }
+    return { key: keyPrefix, type: TAG.List, name, value: null, children, listType: elemTypeId as TagId }
   }
 
-  // Primitives
-  if (type === 'byte' || type === 'short' || type === 'int' || type === 'float' || type === 'double') {
-    return { key, type: tagId, name, value: value as number }
-  }
+  if (tagType === NTAG.BYTE)       return { key: keyPrefix, type: TAG.Byte,      name, value: (value as NInt8).valueOf() }
+  if (tagType === NTAG.SHORT)      return { key: keyPrefix, type: TAG.Short,     name, value: (value as NInt16).valueOf() }
+  if (tagType === NTAG.INT)        return { key: keyPrefix, type: TAG.Int,       name, value: (value as NInt32).valueOf() }
+  if (tagType === NTAG.LONG)       return { key: keyPrefix, type: TAG.Long,      name, value: value as bigint }
+  if (tagType === NTAG.FLOAT)      return { key: keyPrefix, type: TAG.Float,     name, value: (value as NFloat32).valueOf() }
+  if (tagType === NTAG.DOUBLE)     return { key: keyPrefix, type: TAG.Double,    name, value: value as number }
+  if (tagType === NTAG.BYTE_ARRAY) return { key: keyPrefix, type: TAG.ByteArray, name, value: value as Int8Array }
+  if (tagType === NTAG.STRING)     return { key: keyPrefix, type: TAG.String,    name, value: value as string }
+  if (tagType === NTAG.INT_ARRAY)  return { key: keyPrefix, type: TAG.IntArray,  name, value: value as Int32Array }
+  if (tagType === NTAG.LONG_ARRAY) return { key: keyPrefix, type: TAG.LongArray, name, value: value as BigInt64Array }
 
-  if (type === 'long') {
-    // prismarine-nbt returns long as [high, low] array
-    const parts = value as [number, number]
-    const big = (BigInt(parts[0]) << 32n) | BigInt(parts[1] >>> 0)
-    return { key, type: tagId, name, value: big }
-  }
-
-  if (type === 'string') {
-    return { key, type: tagId, name, value: value as string }
-  }
-
-  if (type === 'byteArray') {
-    return { key, type: tagId, name, value: new Int8Array(value as number[]) }
-  }
-
-  if (type === 'intArray') {
-    return { key, type: tagId, name, value: new Int32Array(value as number[]) }
-  }
-
-  if (type === 'longArray') {
-    const arr = (value as [number, number][]).map(
-      ([hi, lo]) => (BigInt(hi) << 32n) | BigInt(lo >>> 0),
-    )
-    return { key, type: tagId, name, value: new BigInt64Array(arr) }
-  }
-
-  return { key, type: tagId, name, value: null }
+  return { key: keyPrefix, type: TAG.End, name, value: null }
 }
 
-function typeNameToId(typeName: string): TagId {
-  const map: Record<string, TagId> = {
-    end: TAG.End,
-    byte: TAG.Byte,
-    short: TAG.Short,
-    int: TAG.Int,
-    long: TAG.Long,
-    float: TAG.Float,
-    double: TAG.Double,
-    byteArray: TAG.ByteArray,
-    string: TAG.String,
-    list: TAG.List,
-    compound: TAG.Compound,
-    intArray: TAG.IntArray,
-    longArray: TAG.LongArray,
+// --- NbtNode -> nbtify -------------------------------------------------------
+
+function nodeToNbtify(node: NbtNode): Tag {
+  switch (node.type) {
+    case TAG.Byte:      return new NInt8(node.value as number)
+    case TAG.Short:     return new NInt16(node.value as number)
+    case TAG.Int:       return new NInt32(node.value as number)
+    case TAG.Long:      return node.value as bigint
+    case TAG.Float:     return new NFloat32(node.value as number)
+    case TAG.Double:    return node.value as number
+    case TAG.ByteArray: return node.value as Int8Array
+    case TAG.String:    return node.value as string
+    case TAG.IntArray:  return node.value as Int32Array
+    case TAG.LongArray: return node.value as BigInt64Array
+
+    case TAG.List: {
+      const children = (node.children ?? []).map(nodeToNbtify)
+      Object.defineProperty(children, TAG_TYPE, {
+        configurable: true, enumerable: false, writable: true,
+        value: (node.listType ?? NTAG.END) as number,
+      })
+      return children as unknown as Tag
+    }
+
+    case TAG.Compound: {
+      const compound: CompoundTag = {}
+      for (const child of node.children ?? []) {
+        compound[child.name] = nodeToNbtify(child)
+      }
+      return compound as unknown as Tag
+    }
+
+    default:
+      return {} as unknown as Tag
   }
-  return map[typeName] ?? TAG.End
 }
+
+// --- Public API --------------------------------------------------------------
 
 /**
  * Parse raw NBT binary data into our editor's document model.
- * Parsing is delegated to the main process (prismarine-nbt uses eval and
- * cannot run inside the Vite-bundled renderer).
+ * Uses nbtify directly in the renderer -- pure ESM, no eval, no IPC needed.
  */
 export async function parseNbt(
   data: ArrayBuffer,
   source: NbtDocument['source'],
 ): Promise<NbtDocument> {
-  // Hint: leveldb values are always little-endian; files try both
-  const littleEndianHint: boolean | null = source.kind === 'leveldb' ? true : null
-  const bytes = Array.from(new Uint8Array(data))
-  const { pnbt, littleEndian } = await window.electronAPI.nbt.parse(bytes, littleEndianHint)
-  const parsed = pnbt as { name?: string; type: string; value: unknown }
-  const root = convertValue(parsed.name ?? '', parsed.type, parsed.value, 'root')
-  return { root, littleEndian, source }
+  const bytes = new Uint8Array(data)
+  let result: NBTData
+
+  if (source.kind === 'leveldb') {
+    // LevelDB values are always little-endian, uncompressed.
+    // strict:false allows trailing bytes in some Bedrock key formats.
+    try {
+      result = await nbtRead(bytes, { endian: 'little', compression: null, strict: false })
+    } catch {
+      // Some keys store the compound without a root-name tag
+      result = await nbtRead(bytes, { endian: 'little', compression: null, rootName: false, strict: false })
+    }
+  } else {
+    // Files: let nbtify auto-detect endian, compression, and rootName
+    result = await nbtRead(bytes)
+  }
+
+  const root = convertNbtify(result.rootName ?? '', result.data as unknown, 'root')
+  return {
+    root,
+    littleEndian: result.endian !== 'big',
+    nbtRootName: result.rootName,
+    source,
+  }
 }
 
 /**
  * Serialise our NbtNode tree back to binary NBT.
- * Serialization is delegated to the main process.
  */
 export async function serializeNbt(doc: NbtDocument): Promise<Uint8Array> {
-  const pnbt = nodeToP(doc.root)
-  const bytes = await window.electronAPI.nbt.serialize(pnbt, doc.littleEndian)
-  return new Uint8Array(bytes)
-}
-
-function nodeToP(node: NbtNode): PNbtValue {
-  const type = idToTypeName(node.type)
-
-  if (node.type === TAG.Compound) {
-    const compound: Record<string, PNbtValue> = {}
-    for (const child of node.children ?? []) {
-      compound[child.name] = nodeToP(child)
-    }
-    return { type, name: node.name, value: compound }
-  }
-
-  if (node.type === TAG.List) {
-    const children = node.children ?? []
-    const elemType = children.length > 0 ? idToTypeName(node.listType ?? TAG.End) : 'end'
-    return {
-      type,
-      name: node.name,
-      value: { type: elemType, value: children.map((c) => nodeToP(c).value) },
-    }
-  }
-
-  if (node.type === TAG.Long) {
-    const big = node.value as bigint
-    // prismarine-nbt writes both halves with writeInt32LE → must be signed int32
-    const hi = Number(BigInt.asIntN(32, big >> 32n))
-    const lo = Number(BigInt.asIntN(32, big & 0xFFFFFFFFn))
-    return { type, name: node.name, value: [hi, lo] }
-  }
-
-  if (node.type === TAG.LongArray) {
-    const arr = node.value as BigInt64Array
-    const pairs = Array.from(arr).map((b) => [
-      Number(BigInt.asIntN(32, b >> 32n)),
-      Number(BigInt.asIntN(32, b & 0xFFFFFFFFn)),
-    ])
-    return { type, name: node.name, value: pairs }
-  }
-
-  if (node.type === TAG.ByteArray) {
-    return { type, name: node.name, value: Array.from(node.value as Int8Array) }
-  }
-
-  if (node.type === TAG.IntArray) {
-    return { type, name: node.name, value: Array.from(node.value as Int32Array) }
-  }
-
-  return { type, name: node.name, value: node.value }
-}
-
-function idToTypeName(id: TagId): string {
-  const map: Record<number, string> = {
-    [TAG.End]: 'end',
-    [TAG.Byte]: 'byte',
-    [TAG.Short]: 'short',
-    [TAG.Int]: 'int',
-    [TAG.Long]: 'long',
-    [TAG.Float]: 'float',
-    [TAG.Double]: 'double',
-    [TAG.ByteArray]: 'byteArray',
-    [TAG.String]: 'string',
-    [TAG.List]: 'list',
-    [TAG.Compound]: 'compound',
-    [TAG.IntArray]: 'intArray',
-    [TAG.LongArray]: 'longArray',
-  }
-  return map[id] ?? 'end'
+  const compound = nodeToNbtify(doc.root) as CompoundTag
+  const rootName = doc.nbtRootName !== undefined
+    ? doc.nbtRootName
+    : (doc.root.name || null)
+  const nbtData = new NBTData(compound, {
+    rootName,
+    endian: doc.littleEndian ? 'little' : 'big',
+    compression: null,
+    bedrockLevel: false,
+  })
+  return nbtWrite(nbtData)
 }

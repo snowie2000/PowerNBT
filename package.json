@@ -14,10 +14,12 @@
   "build": {
     "appId": "com.powernbt.app",
     "productName": "PowerNBT",
+    "directories": {
+      "output": "../power_nbt_release"
+    },
     "files": [
       "dist/**",
-      "dist-electron/**",
-      "node_modules/**"
+      "dist-electron/**"
     ],
     "win": {
       "target": [
@@ -42,18 +44,17 @@
     ]
   },
   "dependencies": {
+    "leveldb-zlib": "^1.2.0"
+  },
+  "devDependencies": {
+    "nbtify": "^2.2.0",
     "@ant-design/icons": "^6.1.0",
     "antd": "^6.3.1",
     "buffer": "^6.0.3",
-    "fflate": "^0.8.2",
-    "leveldb-zlib": "^1.2.0",
     "pako": "^2.1.0",
-    "prismarine-nbt": "^2.8.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "zustand": "^5.0.11"
-  },
-  "devDependencies": {
+    "zustand": "^5.0.11",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/pako": "^2.0.4",

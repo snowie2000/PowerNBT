@@ -31,10 +31,6 @@ interface ElectronAPI {
     readAllKeys(dirPath: string): Promise<number[][]>
     readAll(dirPath: string): Promise<Array<{ key: number[]; value: number[] }>>
   }
-  nbt: {
-    parse(bytes: number[], littleEndianHint: boolean | null): Promise<{ pnbt: unknown; littleEndian: boolean }>
-    serialize(pnbt: unknown, littleEndian: boolean): Promise<number[]>
-  }
 }
 
 declare interface Window {

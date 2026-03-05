@@ -155,7 +155,7 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
 
   const displayRoot = useMemo(() => {
     if (!search.trim()) return root
-    return filterTree(root, search) ?? root
+    return filterTree(root, search) ?? { ...root, children: [] }
   }, [root, search])
 
   // Pre-build key→type map to avoid O(n) traversal per rendered node
@@ -215,7 +215,7 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         allowClear
-        style={{ margin: '8px 8px 4px' }}
+        style={{ margin: '8px 8px 4px', width: 'calc(100% - 16px)' }}
       />
 
       <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>

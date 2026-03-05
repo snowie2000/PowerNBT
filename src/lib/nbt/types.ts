@@ -64,6 +64,12 @@ export interface NbtDocument {
   root: NbtNode
   /** Whether this was a Bedrock little-endian file */
   littleEndian: boolean
+  /**
+   * NBT root name preserved from parse for round-trip serialization.
+   * null  = no root-name tag was present in the binary (e.g. some Bedrock LevelDB values)
+   * string = the root name that was read (may be empty string for Java NBT)
+   */
+  nbtRootName: string | null
   /** Original source: standalone file or LevelDB key */
   source: NbtSource
 }

@@ -19,7 +19,7 @@ export default defineConfig({
           build: {
             rollupOptions: {
               // Native Node.js modules and Node-only libs cannot be bundled
-              external: ['leveldb-zlib', 'prismarine-nbt'],
+              external: ['leveldb-zlib'],
             },
           },
         },

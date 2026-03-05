@@ -32,8 +32,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readAllKeys: (dirPath: string)                                                             => ipcRenderer.invoke('leveldb:readAllKeys', dirPath) as Promise<number[][]>,
     readAll: (dirPath: string)                                                                 => ipcRenderer.invoke('leveldb:readAll', dirPath) as Promise<Array<{key:number[]; value:number[]}>>,
   },
-  nbt: {
-    parse:     (bytes: number[], littleEndianHint: boolean | null)  => ipcRenderer.invoke('nbt:parse', bytes, littleEndianHint) as Promise<{ pnbt: unknown; littleEndian: boolean }>,
-    serialize: (pnbt: unknown, littleEndian: boolean)               => ipcRenderer.invoke('nbt:serialize', pnbt, littleEndian) as Promise<number[]>,
-  },
 })

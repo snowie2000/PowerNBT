@@ -51,12 +51,18 @@ function categorise(label: string): { cat: string; color: string } {
 const ALL_CATS = ['All', 'Player', 'World', 'Score', 'Map', 'Village', 'Actor', 'Binary', 'Misc'] as const
 type CatFilter = typeof ALL_CATS[number]
 
+/** Persists per-world view state across tab switches (component unmount/remount). */
+const savedViewState = new Map<string, { search: string; catFilter: CatFilter }>()
+
 export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) => {
   const { openNbtFile } = useEditorStore()
   const { notification } = App.useApp()
-  const [search, setSearch] = useState('')
-  const [catFilter, setCatFilter] = useState<CatFilter>('Player')
+  const saved = savedViewState.get(db.dirPath)
+  const [search, setSearch] = useState(saved?.search ?? '')
+  const [catFilter, setCatFilter] = useState<CatFilter>(saved?.catFilter ?? 'Player')
   const [loading, setLoading] = useState<string | null>(null)
+
+  const saveState = (s: string, c: CatFilter) => savedViewState.set(db.dirPath, { search: s, catFilter: c })
 
   const allEntries = useMemo<KeyEntry[]>(() => {
     const seen = new Set<string>()
@@ -139,7 +145,7 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
           prefix={<SearchOutlined />}
           placeholder="Search keys…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); saveState(e.target.value, catFilter) }}
           allowClear
         />
         <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
@@ -168,7 +174,7 @@ export const LevelDBViewer: React.FC<LevelDBViewerProps> = ({ db, worldName }) =
                 userSelect: 'none',
                 margin: 0,
               }}
-              onClick={() => setCatFilter(cat)}
+              onClick={() => { setCatFilter(cat); saveState(search, cat) }}
             >
               {cat} {count > 0 && <span style={{ fontSize: 10 }}>{count}</span>}
             </Tag>
