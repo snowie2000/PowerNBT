@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useCallback, useState } from 'react'
 import { Tree, Input, Dropdown, type MenuProps } from 'antd'
 import { SearchOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { DataNode } from 'antd/es/tree'
@@ -139,19 +139,6 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
   const [search, setSearch] = useState('')
   const [addModalParentKey, setAddModalParentKey] = useState<string | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [treeHeight, setTreeHeight] = useState(600)
-
-  // Measure container for virtual scrolling — only renders visible rows
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const update = () => { if (el.clientHeight > 0) setTreeHeight(el.clientHeight) }
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
 
   const displayRoot = useMemo(() => {
     if (!search.trim()) return root
@@ -218,17 +205,17 @@ const NbtTreeInner: React.FC<NbtTreeProps> = ({ fileIndex, root }) => {
         style={{ margin: '8px 8px 4px', width: 'calc(100% - 16px)' }}
       />
 
-      <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <Tree
           showLine={{ showLeafIcon: false }}
           blockNode
+          virtual={false}
           treeData={treeData as unknown as { key: string }[]}
           selectedKeys={selectedKey ? [selectedKey] : []}
           expandedKeys={expandedKeys}
           onSelect={(keys) => selectNode((keys[0] as string) ?? null)}
           onExpand={(keys) => setExpandedKeys(keys as string[])}
           titleRender={titleRender}
-          height={treeHeight}
         />
       </div>
 

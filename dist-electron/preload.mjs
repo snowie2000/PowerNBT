@@ -1,1 +1,34 @@
-"use strict";const i=require("electron");i.contextBridge.exposeInMainWorld("electronAPI",{fs:{readFile:e=>i.ipcRenderer.invoke("fs:readFile",e),writeFile:(e,r)=>i.ipcRenderer.invoke("fs:writeFile",e,r),appendFile:(e,r)=>i.ipcRenderer.invoke("fs:appendFile",e,r),fileSize:e=>i.ipcRenderer.invoke("fs:fileSize",e),exists:e=>i.ipcRenderer.invoke("fs:exists",e),readdir:e=>i.ipcRenderer.invoke("fs:readdir",e),mkdir:e=>i.ipcRenderer.invoke("fs:mkdir",e)},dialog:{openDirectory:()=>i.ipcRenderer.invoke("dialog:openDirectory"),openFiles:e=>i.ipcRenderer.invoke("dialog:openFiles",e),saveFile:e=>i.ipcRenderer.invoke("dialog:saveFile",e)},path:{join:(...e)=>i.ipcRenderer.invoke("path:join",...e),basename:e=>i.ipcRenderer.invoke("path:basename",e)},leveldb:{open:e=>i.ipcRenderer.invoke("leveldb:open",e),close:e=>i.ipcRenderer.invoke("leveldb:close",e),get:(e,r)=>i.ipcRenderer.invoke("leveldb:get",e,r),put:(e,r,n)=>i.ipcRenderer.invoke("leveldb:put",e,r,n),del:(e,r)=>i.ipcRenderer.invoke("leveldb:del",e,r),batch:(e,r)=>i.ipcRenderer.invoke("leveldb:batch",e,r),probeKeys:(e,r)=>i.ipcRenderer.invoke("leveldb:probeKeys",e,r),getKeysWithPrefix:(e,r)=>i.ipcRenderer.invoke("leveldb:getKeysWithPrefix",e,r),readAllKeys:e=>i.ipcRenderer.invoke("leveldb:readAllKeys",e),readAll:e=>i.ipcRenderer.invoke("leveldb:readAll",e)}});
+"use strict";
+const electron = require("electron");
+electron.contextBridge.exposeInMainWorld("electronAPI", {
+  fs: {
+    readFile: (p) => electron.ipcRenderer.invoke("fs:readFile", p),
+    writeFile: (p, d) => electron.ipcRenderer.invoke("fs:writeFile", p, d),
+    appendFile: (p, d) => electron.ipcRenderer.invoke("fs:appendFile", p, d),
+    fileSize: (p) => electron.ipcRenderer.invoke("fs:fileSize", p),
+    exists: (p) => electron.ipcRenderer.invoke("fs:exists", p),
+    readdir: (p) => electron.ipcRenderer.invoke("fs:readdir", p),
+    mkdir: (p) => electron.ipcRenderer.invoke("fs:mkdir", p)
+  },
+  dialog: {
+    openDirectory: () => electron.ipcRenderer.invoke("dialog:openDirectory"),
+    openFiles: (filters) => electron.ipcRenderer.invoke("dialog:openFiles", filters),
+    saveFile: (defaultPath) => electron.ipcRenderer.invoke("dialog:saveFile", defaultPath)
+  },
+  path: {
+    join: (...parts) => electron.ipcRenderer.invoke("path:join", ...parts),
+    basename: (p) => electron.ipcRenderer.invoke("path:basename", p)
+  },
+  leveldb: {
+    open: (dirPath) => electron.ipcRenderer.invoke("leveldb:open", dirPath),
+    close: (dirPath) => electron.ipcRenderer.invoke("leveldb:close", dirPath),
+    get: (dirPath, key) => electron.ipcRenderer.invoke("leveldb:get", dirPath, key),
+    put: (dirPath, key, value) => electron.ipcRenderer.invoke("leveldb:put", dirPath, key, value),
+    del: (dirPath, key) => electron.ipcRenderer.invoke("leveldb:del", dirPath, key),
+    batch: (dirPath, ops) => electron.ipcRenderer.invoke("leveldb:batch", dirPath, ops),
+    probeKeys: (dirPath, keys) => electron.ipcRenderer.invoke("leveldb:probeKeys", dirPath, keys),
+    getKeysWithPrefix: (dirPath, prefix) => electron.ipcRenderer.invoke("leveldb:getKeysWithPrefix", dirPath, prefix),
+    readAllKeys: (dirPath) => electron.ipcRenderer.invoke("leveldb:readAllKeys", dirPath),
+    readAll: (dirPath) => electron.ipcRenderer.invoke("leveldb:readAll", dirPath)
+  }
+});
