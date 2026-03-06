@@ -6,6 +6,7 @@ import { TagIcon } from '../tree/TagIcon'
 import { TAG, TAG_NAMES, type NbtNode } from '../../lib/nbt/types'
 import { useEditorStore } from '../../store/useEditorStore'
 import { ByteArrayEditor } from './editors/ByteArrayEditor'
+import { InventoryInspector, isInventoryNode, isItemNode } from './InventoryInspector'
 
 const { Title, Text } = Typography
 
@@ -62,6 +63,9 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
     switch (node.type) {
       case TAG.Compound:
       case TAG.List:
+        if (isInventoryNode(node) || isItemNode(node)) {
+          return <InventoryInspector node={node} />
+        }
         return (
           <Text type="secondary">
             Select a child node to edit its value.
