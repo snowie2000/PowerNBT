@@ -64,7 +64,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({ fileIndex, node }) => {
       case TAG.Compound:
       case TAG.List:
         if (isInventoryNode(node) || isItemNode(node)) {
-          return <InventoryInspector node={node} />
+          return <InventoryInspector node={node} fileIndex={fileIndex} />
         }
         return (
           <Text type="secondary">

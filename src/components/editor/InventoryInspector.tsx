@@ -1,10 +1,12 @@
-import React, { useState, memo } from 'react'
+import React, { useState, memo, useCallback } from 'react'
+import { Select, InputNumber, Button } from 'antd'
 import itemsWebp from '../../assets/items.webp'
 import {
   BEDROCK_ENCHANT, JAVA_ENCHANT, toRoman,
   MC_COLOR, JSON_COLOR, itemDisplayName, itemIconColor, SPRITE_POS,
 } from '../../lib/minecraft/itemData'
 import { TAG, type NbtNode } from '../../lib/nbt/types'
+import { useEditorStore } from '../../store/useEditorStore'
 
 // ── Minecraft text parsing ────────────────────────────────────────────────────
 
@@ -444,16 +446,183 @@ function InventoryGrid({ node, selectedKey, onSelect }: {
   )
 }
 
+// ── Enchantment editor ────────────────────────────────────────────────────────
+
+/** Stable select options — built once outside the component */
+const ENCHANT_OPTIONS = Object.entries(BEDROCK_ENCHANT)
+  .map(([id, name]) => ({ value: Number(id), label: name }))
+  .sort((a, b) => a.label.localeCompare(b.label))
+
+interface EnchantmentEditorProps {
+  itemNode: NbtNode
+  fileIndex: number
+}
+
+function EnchantmentEditor({ itemNode, fileIndex }: EnchantmentEditorProps) {
+  const { updateNodeValue, deleteNode, updateNodeFull } = useEditorStore()
+  const [addId, setAddId] = useState<number | null>(null)
+  const [addLvl, setAddLvl] = useState<number>(1)
+
+  // Parse current enchantments directly from NBT node
+  const tagNode = itemNode.children?.find(c => c.name === 'tag')
+  const enchListNode = tagNode?.children?.find(c => c.name === 'ench')
+  const enchCompounds = enchListNode?.children ?? []
+
+  type DisplayEnchant = { compoundKey: string; lvlKey: string | undefined; id: number; lvl: number; name: string }
+  const displayEnchants: DisplayEnchant[] = enchCompounds.map(e => {
+    const idNode = e.children?.find(c => c.name === 'id')
+    const lvlNode = e.children?.find(c => c.name === 'lvl')
+    const id = typeof idNode?.value === 'number' ? idNode.value : 0
+    return {
+      compoundKey: e.key,
+      lvlKey: lvlNode?.key,
+      id,
+      lvl: typeof lvlNode?.value === 'number' ? lvlNode.value : 1,
+      name: BEDROCK_ENCHANT[id] ?? `Enchantment #${id}`,
+    }
+  })
+
+  const onLevelChange = useCallback((lvlKey: string, val: number) => {
+    updateNodeValue(fileIndex, lvlKey, val)
+  }, [fileIndex, updateNodeValue])
+
+  const onRemove = useCallback((compoundKey: string) => {
+    deleteNode(fileIndex, compoundKey)
+  }, [fileIndex, deleteNode])
+
+  const onAdd = useCallback(() => {
+    if (addId == null) return
+    const ts = Date.now()
+    updateNodeFull(fileIndex, itemNode.key, item => {
+      // Find or create `tag` compound
+      const existingTag = item.children?.find(c => c.name === 'tag')
+      const tagKey = existingTag?.key ?? `${item.key}__tag__${ts}`
+      const tagNode: NbtNode = existingTag ?? {
+        key: tagKey, type: TAG.Compound, name: 'tag', value: null, children: [],
+      }
+
+      // Find or create `ench` list
+      const existingEnch = tagNode.children?.find(c => c.name === 'ench')
+      const enchKey = existingEnch?.key ?? `${tagKey}__ench__${ts}`
+      const existingEnchants = existingEnch?.children ?? []
+
+      // Build new enchantment compound
+      const newEnch: NbtNode = {
+        key: `${enchKey}__e${ts}_${addId}`,
+        type: TAG.Compound, name: '', value: null,
+        children: [
+          { key: `${enchKey}__e${ts}_${addId}_id`, type: TAG.Short, name: 'id', value: addId, children: undefined, listType: undefined },
+          { key: `${enchKey}__e${ts}_${addId}_lvl`, type: TAG.Short, name: 'lvl', value: addLvl, children: undefined, listType: undefined },
+        ],
+      }
+
+      const newEnchList: NbtNode = {
+        key: enchKey, type: TAG.List, name: 'ench', value: null, listType: TAG.Compound,
+        children: [...existingEnchants, newEnch],
+      }
+
+      const newTagNode: NbtNode = {
+        ...tagNode,
+        children: [...(tagNode.children?.filter(c => c.name !== 'ench') ?? []), newEnchList],
+      }
+
+      return {
+        ...item,
+        children: [...(item.children?.filter(c => c.name !== 'tag') ?? []), newTagNode],
+      }
+    })
+    setAddId(null)
+    setAddLvl(1)
+  }, [addId, addLvl, fileIndex, itemNode.key, updateNodeFull])
+
+  const appliedIds = new Set(displayEnchants.map(e => e.id))
+  const availableOptions = ENCHANT_OPTIONS.filter(o => !appliedIds.has(o.value))
+
+  const panelStyle: React.CSSProperties = {
+    background: '#141414',
+    border: '1px solid #3A003A',
+    borderRadius: 4,
+    padding: '8px 10px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    fontFamily: 'monospace, ui-monospace',
+    minWidth: 280,
+  }
+
+  return (
+    <div style={panelStyle}>
+      {/* Header */}
+      <div style={{ color: '#9999EE', fontSize: 12, fontWeight: 'bold', letterSpacing: '0.08em', borderBottom: '1px solid #2A002A', paddingBottom: 5, marginBottom: 2 }}>
+        ✦ ENCHANTMENTS
+      </div>
+
+      {/* Current enchantments */}
+      {displayEnchants.length === 0 ? (
+        <div style={{ color: '#555', fontSize: 12, fontStyle: 'italic' }}>No enchantments</div>
+      ) : (
+        displayEnchants.map(e => (
+          <div key={e.compoundKey} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: '#9999EE', fontSize: 13, flex: 1 }}>{e.name}</span>
+            <InputNumber
+              min={1} max={255} size="small"
+              value={e.lvl}
+              onChange={v => v != null && e.lvlKey && onLevelChange(e.lvlKey, v)}
+              style={{ width: 58 }}
+            />
+            <span style={{ color: '#666', fontSize: 12, width: 24, textAlign: 'left' }}>{toRoman(e.lvl)}</span>
+            <Button
+              size="small" danger type="text"
+              onClick={() => onRemove(e.compoundKey)}
+              style={{ padding: '0 4px', lineHeight: 1, height: 22, color: '#ff4d4f', fontSize: 16 }}
+            >×</Button>
+          </div>
+        ))
+      )}
+
+      {/* Add row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid #2A002A', paddingTop: 6, marginTop: 2, flexWrap: 'wrap' }}>
+        <Select
+          placeholder="Add enchantment…"
+          options={availableOptions}
+          value={addId}
+          onChange={v => setAddId(v ?? null)}
+          showSearch
+          allowClear
+          filterOption={(input, opt) => (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+          size="small"
+          style={{ flex: '1 1 140px', minWidth: 0 }}
+          popupMatchSelectWidth={false}
+        />
+        <InputNumber
+          min={1} max={255} value={addLvl}
+          onChange={v => v != null && setAddLvl(v)}
+          size="small" style={{ width: 58 }}
+        />
+        <Button
+          size="small" type="primary"
+          disabled={addId == null}
+          onClick={onAdd}
+          style={{ flexShrink: 0 }}
+        >
+          + Add
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function InventoryInspector({ node }: { node: NbtNode }) {
+export function InventoryInspector({ node, fileIndex }: { node: NbtNode; fileIndex: number }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   // Single item compound
   if (isItemNode(node)) {
     return (
-      <div style={{ padding: '0 0 8px' }}>
+      <div style={{ padding: '0 0 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <TooltipCard item={parseItem(node)} />
+        <EnchantmentEditor itemNode={node} fileIndex={fileIndex} />
       </div>
     )
   }
@@ -480,9 +649,12 @@ export function InventoryInspector({ node }: { node: NbtNode }) {
         />
       </div>
 
-      {/* Selected item tooltip */}
-      {selectedItem && !selectedItem.isAir && (
-        <TooltipCard item={selectedItem} />
+      {/* Selected item details */}
+      {selectedItem && !selectedItem.isAir && selectedNode && (
+        <>
+          <TooltipCard item={selectedItem} />
+          <EnchantmentEditor itemNode={selectedNode} fileIndex={fileIndex} />
+        </>
       )}
     </div>
   )

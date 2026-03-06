@@ -39,6 +39,8 @@ interface EditorState {
   deleteNode: (fileIndex: number, nodeKey: string) => void
   /** Add a child node to a compound/list */
   addNode: (fileIndex: number, parentKey: string, node: NbtNode) => void
+  /** Replace a node in-place using a full updater (can modify children too) */
+  updateNodeFull: (fileIndex: number, nodeKey: string, updater: (n: NbtNode) => NbtNode) => void
 
   markClean: () => void
   markDirty: () => void
@@ -178,6 +180,18 @@ export const useEditorStore = create<EditorState>((set) => ({
         ...parent,
         children: [...(parent.children ?? []), node],
       }))
+      if (newRoot === file.doc.root) return s
+      const openFiles = [...s.openFiles]
+      openFiles[fileIndex] = { ...file, doc: { ...file.doc, root: newRoot } }
+      return { openFiles, dirty: true }
+    })
+  },
+
+  updateNodeFull(fileIndex, nodeKey, updater) {
+    set((s) => {
+      const file = s.openFiles[fileIndex]
+      if (!file || file.kind !== 'nbt') return s
+      const newRoot = updatePath(file.doc.root, nodeKey, updater)
       if (newRoot === file.doc.root) return s
       const openFiles = [...s.openFiles]
       openFiles[fileIndex] = { ...file, doc: { ...file.doc, root: newRoot } }
