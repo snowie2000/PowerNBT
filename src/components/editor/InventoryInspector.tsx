@@ -185,7 +185,7 @@ export function isItemNode(node: NbtNode): boolean {
 const INVENTORY_NAMES = new Set([
   'Inventory', 'Items', 'HandItems', 'ArmorItems', 'EnderItems',
   'inventory', 'items', 'Equipment',
-  'Armor',
+  'Armor', 'EnderChestInventory',
 ])
 
 const ARMOR_NODE_NAMES = new Set(['ArmorItems', 'Armor'])
