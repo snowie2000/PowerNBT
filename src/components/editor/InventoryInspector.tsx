@@ -1,10 +1,10 @@
 import React, { useState, memo, useCallback } from 'react'
 import { Select, InputNumber, Button } from 'antd'
-import itemsWebp from '../../assets/items.webp'
 import {
   BEDROCK_ENCHANT, JAVA_ENCHANT, toRoman,
-  MC_COLOR, JSON_COLOR, itemDisplayName, itemIconColor, SPRITE_POS,
+  MC_COLOR, JSON_COLOR, itemDisplayName, itemIconColor,
 } from '../../lib/minecraft/itemData'
+import { itemImage } from '../../lib/minecraft/itemImage'
 import { TAG, type NbtNode } from '../../lib/nbt/types'
 import { useEditorStore } from '../../store/useEditorStore'
 
@@ -181,7 +181,17 @@ export function isItemNode(node: NbtNode): boolean {
 const INVENTORY_NAMES = new Set([
   'Inventory', 'Items', 'HandItems', 'ArmorItems', 'EnderItems',
   'inventory', 'items', 'Equipment',
+  'Armor',
 ])
+
+const ARMOR_NODE_NAMES = new Set(['ArmorItems', 'Armor'])
+
+export function isArmorNode(node: NbtNode): boolean {
+  if (!ARMOR_NODE_NAMES.has(node.name)) return false
+  if (node.type !== TAG.List) return false
+  const children = node.children ?? []
+  return children.length === 0 || children.length <= 4
+}
 
 export function isInventoryNode(node: NbtNode): boolean {
   if (!INVENTORY_NAMES.has(node.name)) return false
@@ -192,26 +202,35 @@ export function isInventoryNode(node: NbtNode): boolean {
 
 // ── ItemIcon ──────────────────────────────────────────────────────────────────
 
+/** Canonical alias → preferred image ID mapping */
+const ITEM_ALIASES: Record<string, string> = {
+  'minecraft:bed':                   'minecraft:white_bed',
+  'minecraft:undyed_shulker_box':    'minecraft:shulker_box',
+  'minecraft:dye':                   'minecraft:white_dye',
+  'minecraft:banner':                'minecraft:white_banner',
+  'minecraft:wool':                  'minecraft:white_wool',
+}
+
 const ItemIcon = memo(function ItemIcon({ id, size = 32 }: { id: string; size?: number }) {
-  const pos = SPRITE_POS[id]
-  const scale = size / 16
-
-  if (pos) {
-    return (
-      <div style={{
-        width: size, height: size, flexShrink: 0,
-        backgroundImage: `url(${itemsWebp})`,
-        backgroundSize: `${256 * scale}px ${1072 * scale}px`,
-        backgroundPosition: `-${pos[0] * size}px -${pos[1] * size}px`,
-        imageRendering: 'pixelated',
-      }} />
-    )
-  }
-
   if (!id || id === 'minecraft:air' || id === 'air') {
     return <div style={{ width: size, height: size, flexShrink: 0, background: '#1c1c1c', border: '1px solid #333', boxSizing: 'border-box' }} />
   }
 
+  const resolvedId = ITEM_ALIASES[id] ?? id
+  const src = itemImage[resolvedId]
+  if (src) {
+    return (
+      <img
+        src={src}
+        width={size}
+        height={size}
+        style={{ flexShrink: 0, imageRendering: 'pixelated', display: 'block' }}
+        draggable={false}
+      />
+    )
+  }
+
+  // Fallback: colored tile with abbreviated label
   const bg = itemIconColor(id)
   const label = id.replace(/^minecraft:/, '').split('_').map(w => w[0]?.toUpperCase() ?? '').slice(0, 3).join('')
   return (
@@ -342,6 +361,46 @@ const SlotCell = memo(function SlotCell({
   )
 })
 
+// ── Armor panel ──────────────────────────────────────────────────────────────
+
+// Slot order for display: always show Helmet → Chestplate → Leggings → Boots (top → bottom)
+// ArmorItems (Java): stored as [Boots(0), Leggings(1), Chestplate(2), Helmet(3)] → reverse
+// Armor (Bedrock): stored as [Helmet(0), Chestplate(1), Leggings(2), Boots(3)] → as-is
+const ARMOR_SLOT_LABELS = ['Helmet', 'Chestplate', 'Leggings', 'Boots']
+
+function ArmorPanel({ node, selectedKey, onSelect }: {
+  node: NbtNode
+  selectedKey: string | null
+  onSelect: (n: NbtNode) => void
+}) {
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const items = node.children ?? []
+
+  // Java ArmorItems: index 0=Boots … 3=Helmet → reverse to show head-to-toe
+  // Bedrock Armor: index 0=Helmet … 3=Boots → as-is
+  const displayOrder: (NbtNode | null)[] = node.name === 'ArmorItems'
+    ? [items[3] ?? null, items[2] ?? null, items[1] ?? null, items[0] ?? null]
+    : [items[0] ?? null, items[1] ?? null, items[2] ?? null, items[3] ?? null]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {displayOrder.map((slotNode, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <SlotCell
+            node={slotNode}
+            selected={slotNode ? (selectedKey === slotNode.key || hoverKey === slotNode.key) : false}
+            onHover={setHoverKey}
+            onClick={onSelect}
+          />
+          <span style={{ fontSize: 11, color: '#666', fontFamily: 'monospace', userSelect: 'none', minWidth: 64 }}>
+            {ARMOR_SLOT_LABELS[i]}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Inventory grid ────────────────────────────────────────────────────────────
 
 function InventoryGrid({ node, selectedKey, onSelect }: {
@@ -365,13 +424,12 @@ function InventoryGrid({ node, selectedKey, onSelect }: {
     }
   }
 
-  // Small inventory (HandItems, ArmorItems ≤4 items) — display in a single row with labels
+  // Small inventory (HandItems ≤6 items) — display in a single row with labels
+  // (ArmorItems / Armor are handled by ArmorPanel before reaching InventoryGrid)
   if (!anySlot || items.length <= 6) {
-    const labels = node.name === 'ArmorItems'
-      ? ['Boots', 'Leggings', 'Chestplate', 'Helmet']
-      : node.name === 'HandItems'
-        ? ['Mainhand', 'Offhand']
-        : undefined
+    const labels = node.name === 'HandItems'
+      ? ['Mainhand', 'Offhand']
+      : undefined
     return (
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {items.map((item, i) => (
@@ -623,6 +681,42 @@ export function InventoryInspector({ node, fileIndex }: { node: NbtNode; fileInd
       <div style={{ padding: '0 0 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <TooltipCard item={parseItem(node)} />
         <EnchantmentEditor itemNode={node} fileIndex={fileIndex} />
+      </div>
+    )
+  }
+
+  // Armor node (ArmorItems / Armor) — vertical panel
+  if (isArmorNode(node)) {
+    const items = node.children ?? []
+    const selectedNode = selectedKey
+      ? items.find(c => c.key === selectedKey) ?? null
+      : null
+    const selectedItem = selectedNode ? parseItem(selectedNode) : null
+    const nonAirCount = items.filter(c => { try { return !parseItem(c).isAir } catch { return false } }).length
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Header */}
+        <div style={{ color: '#777', fontSize: 12, fontFamily: 'monospace' }}>
+          {node.name} — {nonAirCount} / 4 armor slots
+        </div>
+
+        {/* Vertical armor panel */}
+        <div style={{ background: '#1a1a1a', padding: 8, borderRadius: 4, display: 'inline-flex' }}>
+          <ArmorPanel
+            node={node}
+            selectedKey={selectedKey}
+            onSelect={n => setSelectedKey(prev => prev === n.key ? null : n.key)}
+          />
+        </div>
+
+        {/* Selected item details */}
+        {selectedItem && !selectedItem.isAir && selectedNode && (
+          <>
+            <TooltipCard item={selectedItem} />
+            <EnchantmentEditor itemNode={selectedNode} fileIndex={fileIndex} />
+          </>
+        )}
       </div>
     )
   }
